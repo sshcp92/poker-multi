@@ -5,12 +5,14 @@ import time
 import os
 
 # ==========================================
-# 1. 초기 설정 및 형님 원판 디자인
+# 1. 디자인 및 설정 (형님 원판 그대로 FIX)
 # ==========================================
-st.set_page_config(layout="wide", page_title="AI 몬스터 토너먼트 - 멀티", page_icon="🦁")
+st.set_page_config(layout="wide", page_title="AI 몬스터 토너먼트", page_icon="🦁")
 
-BLIND_STRUCTURE = [(100, 200, 0), (200, 400, 0), (300, 600, 600), (400, 800, 800),
-                   (500, 1000, 1000), (1000, 2000, 2000), (2000, 4000, 4000), (5000, 10000, 10000)]
+BLIND_STRUCTURE = [
+    (100, 200, 0), (200, 400, 0), (300, 600, 600), (400, 800, 800),
+    (500, 1000, 1000), (1000, 2000, 2000), (2000, 4000, 4000), (5000, 10000, 10000)
+]
 LEVEL_DURATION = 600
 RANKS = '23456789TJQKA'
 SUITS = ['♠', '♥', '♦', '♣']
@@ -33,7 +35,7 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 
 # ==========================================
-# 2. 멀티플레이용 데이터 핸들링
+# 2. 데이터베이스 연동 (멀티플레이 엔진)
 # ==========================================
 DB_FILE = "poker_db.csv"
 STATE_FILE = "state.txt"
@@ -65,16 +67,16 @@ def save_data(df, state):
         f.write(f"{state['pot']}|{state['cur_bet']}|{state['turn']}|{state['phase']}|{state['comm']}|{state['open']}|{state['msg']}|{state['sb']}|{state['bb']}|{state['ante']}|{state['dealer_idx']}|{state['level']}|{state['start_time']}")
 
 def make_card(card):
-    if not card or card == 'nan': return "🂠"
+    if not card or card == 'nan' or len(card) < 2: return "🂠"
     color = "red" if card[1] in ['♥', '♦'] else "black"
     return f"<span class='card-span' style='color:{color}'>{card}</span>"
 
 # ==========================================
-# 3. 메인 게임 엔진
+# 3. 메인 게임 로직
 # ==========================================
 df, state = load_data()
 
-# 블라인드 타이머 로직
+# 타이머 & 블라인드 로직 (형님 원판)
 elapsed = time.time() - state['start_time']
 lvl_idx = int(elapsed // LEVEL_DURATION)
 if lvl_idx < len(BLIND_STRUCTURE):
@@ -84,7 +86,7 @@ if lvl_idx < len(BLIND_STRUCTURE):
 else:
     timer_str = "MAX"
 
-# 입장 화면
+# 입장 화면 (모바일에서도 시원하게 뚫리게 수정)
 if 'my_seat' not in st.session_state:
     st.title("🦁 몬스터 토너먼트 - 멀티")
     u_name = st.text_input("닉네임 입력", value="👑 형님")
@@ -94,7 +96,11 @@ if 'my_seat' not in st.session_state:
         if u_name and empty_seats:
             idx = random.choice(empty_seats)
             df.at[idx, 'name'], df.at[idx, 'is_joined'], df.at[idx, 'status'] = u_name, True, 'alive'
-            if df['is_joined'].sum() == 1: df.at[idx, 'role'] = 'D'
+            # 딜러, 스몰, 빅 블라인드 자동 배정 로직
+            joined_count = df['is_joined'].sum()
+            if joined_count == 1: df.at[idx, 'role'] = 'D'
+            elif joined_count == 2: df.at[idx, 'role'] = 'SB'
+            elif joined_count == 3: df.at[idx, 'role'] = 'BB'
             save_data(df, state); st.session_state['my_seat'] = idx; st.rerun()
     if c2.button("🆘 서버 초기화"):
         init_game(); st.rerun()
@@ -102,6 +108,7 @@ if 'my_seat' not in st.session_state:
 
 # 게임 화면 렌더링
 my_idx = st.session_state['my_seat']
+# 내 차례 아니면 2초마다 자동 갱신
 if state['turn'] != my_idx and state['phase'] != 'SHOWDOWN':
     time.sleep(2); st.rerun()
 
