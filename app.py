@@ -100,35 +100,30 @@ def make_comm_card(card):
 def get_hand_strength_detail(hand):
     if not hand: return (-1, [], "No Hand")
     ranks = sorted([RANKS.index(c[0]) for c in hand], reverse=True)
-    suits = [c[1] for c in hand]
-    is_flush = any(suits.count(s) >= 5 for s in set(suits))
-    unique_ranks = sorted(list(set(ranks)), reverse=True)
-    is_straight = False; high_s = -1
-    for i in range(len(unique_ranks) - 4):
-        if unique_ranks[i] - unique_ranks[i+4] == 4: is_straight = True; high_s = unique_ranks[i]; break
-    if not is_straight and set([12, 3, 2, 1, 0]).issubset(set(ranks)): is_straight = True; high_s = 3
-    counts = {r: ranks.count(r) for r in ranks}
-    sorted_groups = sorted([(c, r) for r, c in counts.items()], reverse=True)
-    if is_flush and is_straight: return (8, ranks, "스트레이트 플러시")
+    unique = sorted(list(set(ranks)), reverse=True)
+    is_str = False; high_s = -1
+    for i in range(len(unique) - 4):
+        if unique[i] - unique[i+4] == 4: is_str = True; high_s = unique[i]; break
+    if not is_str and set([12, 3, 2, 1, 0]).issubset(set(ranks)): is_str = True; high_s = 3
+    suits = [c[1] for c in hand]; is_flush = any(suits.count(s) >= 5 for s in set(suits))
+    counts = {r: ranks.count(r) for r in ranks}; sorted_groups = sorted([(c, r) for r, c in counts.items()], reverse=True)
+    if is_flush and is_str: return (8, ranks, "스트레이트 플러시")
     if sorted_groups[0][0] == 4: return (7, ranks, f"포카드 ({r_str(RANKS[sorted_groups[0][1]])})")
     if sorted_groups[0][0] == 3 and sorted_groups[1][0] >= 2: return (6, ranks, f"풀하우스 ({r_str(RANKS[sorted_groups[0][1]])})")
     if is_flush: return (5, ranks, "플러시")
-    if is_straight: return (4, ranks, "스트레이트")
+    if is_str: return (4, ranks, "스트레이트")
     if sorted_groups[0][0] == 3: return (3, ranks, f"트리플 ({r_str(RANKS[sorted_groups[0][1]])})")
     if sorted_groups[0][0] == 2 and sorted_groups[1][0] == 2: return (2, ranks, f"투페어 ({r_str(RANKS[sorted_groups[0][1]])} & {r_str(RANKS[sorted_groups[1][1]])})")
     if sorted_groups[0][0] == 2: return (1, ranks, f"원페어 ({r_str(RANKS[sorted_groups[0][1]])})")
     return (0, ranks, f"하이카드 ({r_str(RANKS[sorted_groups[0][1]])})")
 
 def get_bot_decision(player, data):
-    roll = random.random()
-    to_call = data['current_bet'] - player['bet']
+    roll = random.random(); to_call = data['current_bet'] - player['bet']
     if to_call == 0: return "Check", 0
     fold_thresh = 0.2 if player['style'] == 'Tight' else 0.1
     if roll < fold_thresh: return "Fold", 0
     raise_thresh = 0.7 if player['style'] == 'Aggressive' else 0.85
-    if roll > raise_thresh:
-        raise_amt = max(data['bb']*2, data['current_bet']*2)
-        return "Raise", raise_amt
+    if roll > raise_thresh: return "Raise", max(data['bb']*2, data['current_bet']*2)
     return "Call", to_call
 
 # ==========================================
@@ -138,16 +133,11 @@ def check_phase_end(data):
     active = [p for p in data['players'] if p['status'] == 'alive']
     if len(active) <= 1:
         winner = active[0]; winner['stack'] += data['pot']
-        data['msg'] = f"🏆 {winner['name']} 승리! (All Fold)"
-        data['phase'] = 'GAME_OVER'; save_data(data); return True
-
-    bet_target = data['current_bet']
-    all_acted = all(p['has_acted'] for p in active)
+        data['msg'] = f"🏆 {winner['name']} 승리! (All Fold)"; data['phase'] = 'GAME_OVER'; save_data(data); return True
+    bet_target = data['current_bet']; all_acted = all(p['has_acted'] for p in active)
     all_matched = all(p['bet'] == bet_target or p['stack'] == 0 for p in active)
-    
     if all_acted and all_matched:
-        deck = data['deck']
-        next_p = False
+        deck = data['deck']; next_p = False
         if data['phase'] == 'PREFLOP': data['phase']='FLOP'; data['community']=[deck.pop() for _ in range(3)]; next_p=True
         elif data['phase'] == 'FLOP': data['phase']='TURN'; data['community'].append(deck.pop()); next_p=True
         elif data['phase'] == 'TURN': data['phase']='RIVER'; data['community'].append(deck.pop()); next_p=True
@@ -157,16 +147,13 @@ def check_phase_end(data):
                 s, r, d = get_hand_strength_detail(p['hand']+data['community'])
                 if s > best_s: best_s=s; winners=[p]; desc=d
                 elif s == best_s: winners.append(p)
-            names = ", ".join([w['name'] for w in winners]); data['msg'] = f"🏆 {names} 승리! [{desc}]"
+            data['msg'] = f"🏆 {', '.join([w['name'] for w in winners])} 승리! [{desc}]"
             split = data['pot'] // len(winners)
             for w in winners: w['stack'] += split
             data['pot'] = 0; data['phase'] = 'GAME_OVER'; save_data(data); return True
-            
         if next_p:
             data['current_bet'] = 0
-            for p in data['players']:
-                p['bet']=0; p['has_acted']=False
-                if p['status']=='alive': p['action']=''
+            for p in data['players']: p['bet']=0; p['has_acted']=False; p['action']='' if p['status']=='alive' else p['action']
             dealer = data['dealer_idx']
             for i in range(1, 10):
                 idx = (dealer + i) % 9
@@ -180,19 +167,17 @@ def pass_turn(data):
         idx = (curr + i) % 9
         if data['players'][idx]['status'] == 'alive' and data['players'][idx]['stack'] > 0:
             data['turn_idx'] = idx; break
-    data['turn_start_time'] = time.time()
-    save_data(data)
+    data['turn_start_time'] = time.time(); save_data(data)
 
 # ==========================================
-# 5. 입장 처리
+# 5. 입장 처리 (로직과 버튼 분리)
 # ==========================================
 if 'my_seat' not in st.session_state:
     st.title("🦁 AI 몬스터 토너먼트 (Full Version)")
     u_name = st.text_input("닉네임", value="형님")
     col1, col2 = st.columns(2)
     if col1.button("입장하기", type="primary"):
-        data = load_data()
-        target = -1
+        data = load_data(); target = -1
         for i, p in enumerate(data['players']):
             if p['is_human'] and p['name'] == u_name: target = i; break
         if target == -1:
@@ -202,23 +187,20 @@ if 'my_seat' not in st.session_state:
                     if not data['players'][i]['is_human']: target = i; break
             data['players'][target]['name'] = u_name; data['players'][target]['is_human'] = True; data['players'][target]['status'] = 'alive'
             save_data(data)
-        st.session_state['my_seat'] = target
-        st.rerun()
+        st.session_state['my_seat'] = target; st.rerun()
     if col2.button("서버 초기화 (오류 시 클릭)"):
         if os.path.exists(DATA_FILE): os.remove(DATA_FILE)
         st.rerun()
     st.stop()
 
 # ==========================================
-# 6. 메인 실행 & 렌더링
+# 6. 메인 실행 & 렌더링 (입장 버튼 제거 완료)
 # ==========================================
 data = load_data()
 if st.session_state['my_seat'] >= len(data['players']): del st.session_state['my_seat']; st.rerun()
 
-my_seat = st.session_state['my_seat']
-me = data['players'][my_seat]
-curr_idx = data['turn_idx']
-curr_p = data['players'][curr_idx]
+my_seat = st.session_state['my_seat']; me = data['players'][my_seat]
+curr_idx = data['turn_idx']; curr_p = data['players'][curr_idx]
 
 time_left = max(0, TURN_TIMEOUT - (time.time() - data['turn_start_time']))
 
@@ -228,12 +210,9 @@ if data['phase'] != 'GAME_OVER' and time_left <= 0:
     save_data(data); st.rerun()
 
 # --- 화면 그리기 ---
-elapsed = time.time() - data['start_time']
-lvl = min(len(BLIND_STRUCTURE), int(elapsed // LEVEL_DURATION) + 1)
-sb, bb, ante = BLIND_STRUCTURE[lvl-1]
-timer_str = f"{int(600-(elapsed%600))//60:02d}:{int(600-(elapsed%600))%60:02d}"
-alive_players = [p for p in data['players'] if p['stack'] > 0]
-avg_stack = sum(p['stack'] for p in alive_players) // len(alive_players) if alive_players else 0
+elapsed = time.time() - data['start_time']; lvl = min(len(BLIND_STRUCTURE), int(elapsed // LEVEL_DURATION) + 1)
+sb, bb, ante = BLIND_STRUCTURE[lvl-1]; timer_str = f"{int(600-(elapsed%600))//60:02d}:{int(600-(elapsed%600))%60:02d}"
+alive_p = [p for p in data['players'] if p['stack'] > 0]; avg_stack = sum(p['stack'] for p in alive_p) // len(alive_p) if alive_p else 0
 
 st.markdown(f'<div class="top-hud"><div>LEVEL {lvl}</div><div class="hud-time">{timer_str}</div><div>🟡 {sb}/{bb} (A{ante})</div><div>평균 스택 (Avg Stack) : {avg_stack:,}</div></div>', unsafe_allow_html=True)
 
@@ -243,10 +222,8 @@ with col_table:
     html = '<div class="game-board-container"><div class="poker-table"></div>'
     comm = "".join([make_comm_card(c) for c in data['community']])
     for i in range(9):
-        p = data['players'][i]
-        active = "active-turn" if i == curr_idx and data['phase'] != 'GAME_OVER' else ""
-        hero = "hero-seat" if i == my_seat else ""
-        timer_html = f'<div class="turn-timer">⏰ {int(time_left)}초</div>' if i == curr_idx and data['phase'] != 'GAME_OVER' else ""
+        p = data['players'][i]; active = "active-turn" if i == curr_idx and data['phase'] != 'GAME_OVER' else ""
+        hero = "hero-seat" if i == my_seat else ""; timer_html = f'<div class="turn-timer">⏰ {int(time_left)}초</div>' if i == curr_idx and data['phase'] != 'GAME_OVER' else ""
         if p['status'] == 'folded': cards = "<div class='fold-text'>FOLD</div>"; cls="folded-seat"
         else:
             cls=""
@@ -265,17 +242,14 @@ with col_controls:
         if st.button("다음 게임 시작", type="primary"):
             if os.path.exists(DATA_FILE): os.remove(DATA_FILE)
             st.rerun()
-
     elif curr_idx == my_seat:
-        st.success(f"형님 차례! (남은 시간: {int(time_left)}초)")
-        to_call = data['current_bet'] - me['bet']
+        st.success(f"형님 차례! (남은 시간: {int(time_left)}초)"); to_call = data['current_bet'] - me['bet']
         if st.button("체크" if to_call == 0 else f"콜 ({to_call:,})", use_container_width=True):
-            pay = min(to_call, me['stack']); me['stack'] -= pay; me['bet'] += pay; data['pot'] += pay
-            me['action'] = "체크" if pay == 0 else f"콜 ({pay})"; me['has_acted'] = True
+            pay = min(to_call, me['stack']); me['stack'] -= pay; me['bet'] += pay; data['pot'] += pay; me['has_acted'] = True
             if not check_phase_end(data): pass_turn(data)
             save_data(data); st.rerun()
         if st.button("폴드", type="primary", use_container_width=True):
-            me['status'] = 'folded'; me['action'] = "폴드"; me['has_acted'] = True
+            me['status'] = 'folded'; me['has_acted'] = True
             if not check_phase_end(data): pass_turn(data)
             save_data(data); st.rerun()
         st.markdown("---")
@@ -283,37 +257,32 @@ with col_controls:
         if me['stack'] > min_r:
             val = st.slider("레이즈 금액", int(min_r), int(me['stack']), int(min_r))
             if st.button("레이즈 확정", use_container_width=True):
-                pay = val - me['bet']; me['stack'] -= pay; me['bet'] = val; data['pot'] += pay
-                data['current_bet'] = val; me['action'] = f"레이즈 ({val})"; me['has_acted'] = True
+                pay = val - me['bet']; me['stack'] -= pay; me['bet'] = val; data['pot'] += pay; data['current_bet'] = val; me['has_acted'] = True
                 for p in data['players']:
                     if p != me and p['status']=='alive' and p['stack']>0: p['has_acted']=False
                 if not check_phase_end(data): pass_turn(data)
                 save_data(data); st.rerun()
         if st.button("올인 (All-in)", use_container_width=True):
-            amt = me['stack']; me['stack'] = 0; me['bet'] += amt; data['pot'] += amt
+            amt = me['stack']; me['stack'] = 0; me['bet'] += amt; data['pot'] += amt; me['has_acted'] = True
             if me['bet'] > data['current_bet']:
                 data['current_bet'] = me['bet']
                 for p in data['players']:
                     if p != me and p['status']=='alive': p['has_acted']=False
-            me['action'] = "올인"; me['has_acted'] = True
             if not check_phase_end(data): pass_turn(data)
             save_data(data); st.rerun()
         time.sleep(1); st.rerun()
     else:
         if not curr_p['is_human']:
-            time.sleep(1)
-            act, amt = get_bot_decision(curr_p, data)
-            actual = min(amt, curr_p['stack']); curr_p['stack'] -= actual; curr_p['bet'] += actual; data['pot'] += actual
+            time.sleep(1); act, amt = get_bot_decision(curr_p, data); actual = min(amt, curr_p['stack'])
+            curr_p['stack'] -= actual; curr_p['bet'] += actual; data['pot'] += actual
             if curr_p['bet'] > data['current_bet']:
                 data['current_bet'] = curr_p['bet']
                 for p in data['players']:
                     if p != curr_p and p['status']=='alive' and p['stack']>0: p['has_acted']=False
-            act_str = f"{act} ({curr_p['bet']})" if act != "Fold" else "폴드"
-            if act == "Call" and actual == 0: act_str = "체크"
+            curr_p['action'] = "체크" if (act == "Call" and actual == 0) else (f"{act} ({curr_p['bet']})" if act != "Fold" else "폴드")
             if act == "Fold": curr_p['status'] = 'folded'
-            curr_p['action'] = act_str; curr_p['has_acted'] = True
+            curr_p['has_acted'] = True
             if not check_phase_end(data): pass_turn(data)
             save_data(data); st.rerun()
         else:
-            st.info(f"👤 {curr_p['name']} 님의 턴입니다. (남은 시간: {int(time_left)}초)")
-            time.sleep(1); st.rerun()
+            st.info(f"👤 {curr_p['name']} 님의 턴입니다. (남은 시간: {int(time_left)}초)"); time.sleep(1); st.rerun()
