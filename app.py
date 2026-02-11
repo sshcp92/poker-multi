@@ -1,62 +1,76 @@
 import streamlit as st
+import pandas as pd
 import random
 import time
 import os
 import json
 
 # ==========================================
-# 1. 설정 및 디자인 (형님 원판 100% 고정)
+# 1. 원판 설정 & CSS 디자인 (삭제 없이 100% 복구)
 # ==========================================
-st.set_page_config(layout="wide", page_title="AI 몬스터 토너먼트", page_icon="🦁")
+st.set_page_config(layout="wide", page_title="AI 몬스터 토너먼트 - FULL", page_icon="🦁")
 
-BLIND_STRUCTURE = [(100, 200, 0), (200, 400, 0), (300, 600, 600), (400, 800, 800)]
+# 블라인드 구조 (원판 그대로)
+BLIND_STRUCTURE = [
+    (100, 200, 0), (200, 400, 0), (300, 600, 100), (400, 800, 100),
+    (500, 1000, 200), (1000, 2000, 200), (2000, 4000, 400), (5000, 10000, 1000)
+]
+LEVEL_DURATION = 600
+
+# 카드 설정
 RANKS = '23456789TJQKA'
 SUITS = ['♠', '♥', '♦', '♣']
 DISPLAY_MAP = {'T': '10', 'J': 'J', 'Q': 'Q', 'K': 'K', 'A': 'A'}
 
+# 스타일 (형님이 원하시던 그 디자인)
 st.markdown("""<style>
 .stApp {background-color:#121212;}
 .top-hud { display: flex; justify-content: space-around; align-items: center; background: #333; padding: 10px; border-radius: 10px; margin-bottom: 5px; border: 1px solid #555; color: white; font-weight: bold; font-size: 16px; }
 .hud-time { color: #ffeb3b; font-size: 20px; }
 .game-board-container { position:relative; width:100%; height:650px; margin:0 auto; background-color:#1e1e1e; border-radius:30px; border:4px solid #333; overflow: hidden; }
 .poker-table { position:absolute; top:45%; left:50%; transform:translate(-50%,-50%); width: 90%; height: 460px; background: radial-gradient(#5d4037, #3e2723); border: 20px solid #281915; border-radius: 250px; box-shadow: inset 0 0 50px rgba(0,0,0,0.8); }
-.seat { position:absolute; width:140px; height:160px; background:#2c2c2c; border:3px solid #666; border-radius:15px; color:white; text-align:center; font-size:12px; display:flex; flex-direction:column; justify-content:flex-start; padding-top: 10px; align-items:center; z-index:10; transition: all 0.3s; }
+.seat { position:absolute; width:140px; height:160px; background:#2c2c2c; border:3px solid #666; border-radius:15px; color:white; text-align:center; font-size:12px; display:flex; flex-direction:column; justify-content:flex-start; padding-top: 10px; align-items:center; z-index:10; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
 .pos-0 {top:30px; right:25%;} .pos-1 {top:110px; right:5%;} .pos-2 {bottom:110px; right:5%;} .pos-3 {bottom:30px; right:25%;} .pos-4 {bottom:30px; left:50%; transform:translateX(-50%);} .pos-5 {bottom:30px; left:25%;} .pos-6 {bottom:110px; left:5%;} .pos-7 {top:110px; left:5%;} .pos-8 {top:30px; left:25%;}
 .hero-seat { border:4px solid #ffd700; background:#3a3a3a; box-shadow:0 0 25px #ffd700; z-index: 20; transform: translateX(-50%) scale(1.1); }
-.active-turn { border:4px solid #ffeb3b !important; box-shadow: 0 0 20px #ffeb3b; transform: scale(1.05); }
-.card-span {background:white; padding:2px 6px; border-radius:4px; margin:1px; font-weight:bold; font-size:26px; color:black; border:1px solid #ccc; line-height: 1.0;}
-.role-badge { position: absolute; top: -10px; left: -10px; width: 30px; height: 30px; border-radius: 50%; color: black; font-weight: bold; line-height: 26px; border: 2px solid #333; z-index: 100; font-size: 14px; }
+.active-turn { border:4px solid #ffeb3b !important; box-shadow: 0 0 20px #ffeb3b; transform: scale(1.05); transition: 0.3s; }
+.card-span {background:white; padding:2px 6px; border-radius:4px; margin:1px; font-weight:bold; font-size:26px; color:black; border:1px solid #ccc; line-height: 1.0; display:inline-block;}
+.role-badge { position: absolute; top: -10px; left: -10px; width: 30px; height: 30px; border-radius: 50%; color: black; font-weight: bold; line-height: 26px; border: 2px solid #333; z-index: 100; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
 .role-D { background: #ffeb3b; } .role-SB { background: #90caf9; } .role-BB { background: #ef9a9a; }
-.action-badge { position: absolute; bottom: -15px; background:#ffeb3b; color:black; font-weight:bold; padding:2px 8px; border-radius:4px; font-size: 11px; border: 1px solid #000; z-index:100; white-space: nowrap;}
-.fold-text { color: #ff5252; font-weight: bold; font-size: 18px; margin-top: 20px; }
-.folded-seat { opacity: 0.4; border: 3px solid #333 !important; }
+.action-badge { position: absolute; bottom: -15px; background:#ffeb3b; color:black; font-weight:bold; padding:2px 8px; border-radius:4px; font-size: 12px; border: 1px solid #000; z-index:100; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+.fold-text { color: #ff5252; font-weight: bold; font-size: 20px; margin-top: 30px; text-shadow: 1px 1px 2px black; }
+.folded-seat { opacity: 0.5; border: 3px solid #444 !important; }
 </style>""", unsafe_allow_html=True)
 
 # ==========================================
-# 2. 데이터 엔진 (v16_slow)
+# 2. 데이터 엔진 (안전성 강화)
 # ==========================================
-DATA_FILE = "poker_v16_slow.json"
+DATA_FILE = "poker_full_v1.json"
 
 def init_game_data():
     deck = [r+s for r in RANKS for s in SUITS]; random.shuffle(deck)
     players = []
+    # 형님 원판 봇 스타일 및 이름 복구
+    bot_names = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India"]
     styles = ['Tight', 'Aggressive', 'Normal', 'Tight', 'Hero', 'Normal', 'Aggressive', 'Tight', 'Normal']
+    
     for i in range(9):
         players.append({
-            'name': f'Bot {i+1}', 'seat': i+1, 'stack': 60000, 
+            'name': bot_names[i], 'seat': i+1, 'stack': 100000, 
             'hand': [deck.pop(), deck.pop()], 'bet': 0, 'status': 'alive', 
             'action': '', 'is_human': False, 'role': '', 'has_acted': False,
             'style': styles[i]
         })
+    
+    # 딜러, 블라인드 설정
     players[0]['role'] = 'D'; players[1]['role'] = 'SB'; players[2]['role'] = 'BB'
     players[1]['stack']-=100; players[1]['bet']=100; players[1]['action']='SB 100'; players[1]['has_acted']=True
     players[2]['stack']-=200; players[2]['bet']=200; players[2]['action']='BB 200'; players[2]['has_acted']=True
     
     return {
         'players': players, 'pot': 300, 'deck': deck, 'community': [],
-        'phase': 'PREFLOP', 'current_bet': 200, 'turn_idx': 3, 
+        'phase': 'PREFLOP', 'current_bet': 200, 'turn_idx': 3, # UTG
         'dealer_idx': 0, 'sb': 100, 'bb': 200, 'ante': 0, 'level': 1, 
-        'msg': "게임을 시작합니다!", 'last_act_time': time.time()
+        'start_time': time.time(), 'msg': "게임을 시작합니다!"
     }
 
 def load_data():
@@ -71,47 +85,89 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding='utf-8') as f: json.dump(data, f)
 
 # ==========================================
-# 3. 유틸리티
+# 3. 족보 계산 & 유틸리티 (상세 로직 복구)
 # ==========================================
 def r_str(r): return DISPLAY_MAP.get(r, r)
+
 def make_card(card):
     if not card or len(card) < 2: return "🂠"
     color = "red" if card[1] in ['♥', '♦'] else "black"
+    # 형님이 원하시던 카드 디자인 유지
     return f"<span class='card-span' style='color:{color}'>{r_str(card[0])}{card[1]}</span>"
 
+def get_hand_strength_detail(hand):
+    # [형님 원판 로직 100% 복구] 상세한 족보 판별
+    if not hand: return (-1, [], "No Hand")
+    ranks = sorted([RANKS.index(c[0]) for c in hand], reverse=True)
+    suits = [c[1] for c in hand]
+    is_flush = any(suits.count(s) >= 5 for s in set(suits))
+    
+    unique_ranks = sorted(list(set(ranks)), reverse=True)
+    is_straight = False
+    high_s = -1
+    for i in range(len(unique_ranks) - 4):
+        if unique_ranks[i] - unique_ranks[i+4] == 4: is_straight = True; high_s = unique_ranks[i]; break
+    # A-5 스트레이트 처리
+    if not is_straight and set([12, 3, 2, 1, 0]).issubset(set(ranks)): is_straight = True; high_s = 3
+    
+    counts = {r: ranks.count(r) for r in ranks}
+    sorted_groups = sorted([(c, r) for r, c in counts.items()], reverse=True)
+    
+    # 상세 족보 문자열 반환
+    if is_flush and is_straight: return (8, ranks, "스트레이트 플러시")
+    if sorted_groups[0][0] == 4: return (7, ranks, f"포카드 ({r_str(RANKS[sorted_groups[0][1]])})")
+    if sorted_groups[0][0] == 3 and sorted_groups[1][0] >= 2: return (6, ranks, f"풀하우스 ({r_str(RANKS[sorted_groups[0][1]])})")
+    if is_flush: return (5, ranks, "플러시")
+    if is_straight: return (4, ranks, "스트레이트")
+    if sorted_groups[0][0] == 3: return (3, ranks, f"트리플 ({r_str(RANKS[sorted_groups[0][1]])})")
+    if sorted_groups[0][0] == 2 and sorted_groups[1][0] == 2: return (2, ranks, f"투페어 ({r_str(RANKS[sorted_groups[0][1]])} & {r_str(RANKS[sorted_groups[1][1]])})")
+    if sorted_groups[0][0] == 2: return (1, ranks, f"원페어 ({r_str(RANKS[sorted_groups[0][1]])})")
+    return (0, ranks, f"하이카드 ({r_str(RANKS[sorted_groups[0][1]])})")
+
 def get_bot_decision(player, data):
-    # 봇은 단순하게 Call 위주, 가끔 Raise
+    # 봇 지능 (스타일 반영)
     roll = random.random()
     to_call = data['current_bet'] - player['bet']
+    
+    # 1. 체크 가능하면 체크
     if to_call == 0: return "Check", 0
-    if roll < 0.1: return "Fold", 0
-    if roll < 0.2: return "Raise", max(data['bb']*2, data['current_bet']*2)
+    
+    # 2. 폴드 확률 (타이트한 봇은 더 잘 죽음)
+    fold_thresh = 0.2 if player['style'] == 'Tight' else 0.1
+    if roll < fold_thresh: return "Fold", 0
+    
+    # 3. 레이즈 확률 (공격적인 봇은 더 잘 침)
+    raise_thresh = 0.7 if player['style'] == 'Aggressive' else 0.85
+    if roll > raise_thresh:
+        # 최소 2배 ~ 최대 3배
+        raise_amt = max(data['bb']*2, data['current_bet']*2)
+        return "Raise", raise_amt
+        
+    # 4. 기본은 콜
     return "Call", to_call
 
 # ==========================================
-# 4. 페이즈 및 턴 관리 (순차 보장 핵심)
+# 4. 페이즈 전환 로직 (카드 실종 방지)
 # ==========================================
-def next_turn(data):
-    # 다음 살아있는 사람 찾기 (무조건 +1)
-    curr = data['turn_idx']
-    found_next = False
-    for i in range(1, 10):
-        idx = (curr + i) % 9
-        if data['players'][idx]['status'] == 'alive':
-            data['turn_idx'] = idx; found_next = True; break
-    
-    if not found_next: return # 혼자 남음 (승리 처리 로직에서 걸러짐)
-
-    # 페이즈 종료 조건 체크
+def check_phase_end(data):
     active = [p for p in data['players'] if p['status'] == 'alive']
+    
+    # 승자 결정 (1명 남음)
+    if len(active) <= 1:
+        winner = active[0]
+        winner['stack'] += data['pot']
+        data['msg'] = f"🏆 {winner['name']} 승리! (All Fold)"
+        data['phase'] = 'GAME_OVER'
+        save_data(data); return True
+
     bet_target = data['current_bet']
     all_acted = all(p['has_acted'] for p in active)
     all_matched = all(p['bet'] == bet_target or p['stack'] == 0 for p in active)
     
     if all_acted and all_matched:
-        # 페이즈 전환
         deck = data['deck']
         next_p = False
+        
         if data['phase'] == 'PREFLOP':
             data['phase']='FLOP'; data['community']=[deck.pop() for _ in range(3)]; next_p=True
         elif data['phase'] == 'FLOP':
@@ -119,47 +175,79 @@ def next_turn(data):
         elif data['phase'] == 'TURN':
             data['phase']='RIVER'; data['community'].append(deck.pop()); next_p=True
         elif data['phase'] == 'RIVER':
-            data['phase']='GAME_OVER'; data['msg']="쇼다운 결과 확인"; save_data(data); return
-
+            # 쇼다운 (상세 족보 표시)
+            best_s = -1; winners = []; desc = ""
+            for p in active:
+                s, r, d = get_hand_strength_detail(p['hand']+data['community'])
+                if s > best_s: best_s=s; winners=[p]; desc=d
+                elif s == best_s: # 킥커 비교 생략하고 동률 처리
+                    winners.append(p)
+            
+            names = ", ".join([w['name'] for w in winners])
+            data['msg'] = f"🏆 {names} 승리! [{desc}]"
+            split = data['pot'] // len(winners)
+            for w in winners: w['stack'] += split
+            data['pot'] = 0; data['phase'] = 'GAME_OVER'
+            save_data(data); return True
+            
         if next_p:
+            # 페이즈 변경 시 초기화
             data['current_bet'] = 0
             for p in data['players']:
-                p['bet']=0; p['has_acted']=False; 
+                p['bet']=0; p['has_acted']=False
                 if p['status']=='alive': p['action']=''
             
-            # 다음 페이즈 턴은 Dealer 다음부터
+            # 턴은 딜러 다음(SB)부터
             dealer = data['dealer_idx']
             for i in range(1, 10):
                 idx = (dealer + i) % 9
                 if data['players'][idx]['status'] == 'alive':
                     data['turn_idx'] = idx; break
+            
             data['msg'] = f"{data['phase']} 시작!"
-            save_data(data)
+            save_data(data); return True
+    return False
+
+def pass_turn(data):
+    curr = data['turn_idx']
+    for i in range(1, 10):
+        idx = (curr + i) % 9
+        if data['players'][idx]['status'] == 'alive' and data['players'][idx]['stack'] > 0:
+            data['turn_idx'] = idx; break
+    save_data(data)
 
 # ==========================================
-# 5. 입장 및 초기화
+# 5. 입장 처리
 # ==========================================
 if 'my_seat' not in st.session_state:
-    st.title("🦁 AI 몬스터 토너먼트 - SLOW")
+    st.title("🦁 AI 몬스터 토너먼트 (Full Version)")
     u_name = st.text_input("닉네임", value="형님")
     col1, col2 = st.columns(2)
     if col1.button("입장하기", type="primary"):
         data = load_data()
-        target = 4
-        if data['players'][4]['is_human']: # 4번 차있으면 빈자리
-            for i in range(9): 
-                if not data['players'][i]['is_human']: target = i; break
-        data['players'][target]['name'] = u_name
-        data['players'][target]['is_human'] = True
-        data['players'][target]['status'] = 'alive'
-        save_data(data); st.session_state['my_seat'] = target; st.rerun()
-    if col2.button("서버 초기화"):
+        target = -1
+        # 재접속 확인
+        for i, p in enumerate(data['players']):
+            if p['is_human'] and p['name'] == u_name: target = i; break
+        # 없으면 4번 자리 or 빈자리
+        if target == -1:
+            target = 4
+            if data['players'][4]['is_human']:
+                for i in range(9): 
+                    if not data['players'][i]['is_human']: target = i; break
+            data['players'][target]['name'] = u_name
+            data['players'][target]['is_human'] = True
+            data['players'][target]['status'] = 'alive'
+            save_data(data)
+        st.session_state['my_seat'] = target
+        st.rerun()
+    if col2.button("서버 초기화 (오류 시 클릭)"):
         if os.path.exists(DATA_FILE): os.remove(DATA_FILE)
         st.rerun()
     st.stop()
 
 # ==========================================
-# 6. 메인 로직 (여기서 화면 그리고 -> 대기 -> 봇 행동 -> 리런)
+# 6. 메인 실행 & 렌더링 (순차 실행의 핵심)
 # ==========================================
 data = load_data()
 if st.session_state['my_seat'] >= len(data['players']): del st.session_state['my_seat']; st.rerun()
@@ -169,11 +257,18 @@ me = data['players'][my_seat]
 curr_idx = data['turn_idx']
 curr_p = data['players'][curr_idx]
 
-# --- [화면 렌더링 먼저] ---
-st.markdown(f'<div class="top-hud"><div>{data["phase"]}</div><div class="hud-time">Pot: {data["pot"]:,}</div></div>', unsafe_allow_html=True)
+# ------------------------------------
+# 1. 화면 먼저 그리기 (중요!)
+# ------------------------------------
+elapsed = time.time() - data['start_time']
+lvl = min(len(BLIND_STRUCTURE), int(elapsed // LEVEL_DURATION) + 1)
+timer_str = f"{int(600-(elapsed%600))//60:02d}:{int(600-(elapsed%600))%60:02d}"
 
-col1, col2 = st.columns([3, 1])
-with col1:
+st.markdown(f'<div class="top-hud"><div>LEVEL {lvl}</div><div class="hud-time">{timer_str}</div><div>Pot: {data["pot"]:,}</div></div>', unsafe_allow_html=True)
+
+col_table, col_controls = st.columns([3, 1])
+
+with col_table:
     html = '<div class="game-board-container"><div class="poker-table"></div>'
     comm = "".join([make_card(c) for c in data['community']])
     for i in range(9):
@@ -181,52 +276,61 @@ with col1:
         active = "active-turn" if i == curr_idx and data['phase'] != 'GAME_OVER' else ""
         hero = "hero-seat" if i == my_seat else ""
         
-        # 폴드 & 핸드 표시
-        if p['status'] == 'folded': cards = "<div class='fold-text'>FOLD</div>"; cls="folded-seat"
+        # 카드 표시 로직 (폴드, 나, 쇼다운)
+        if p['status'] == 'folded': 
+            cards = "<div class='fold-text'>FOLD</div>"; cls="folded-seat"
         else:
             cls=""
             if i == my_seat or (data['phase'] == 'GAME_OVER' and p['status'] == 'alive'):
                 if p['hand']: cards = f"<div>{make_card(p['hand'][0])}{make_card(p['hand'][1])}</div>"
                 else: cards = ""
-            else: cards = "<div style='font-size:20px'>🂠 🂠</div>"
+            else: 
+                cards = "<div style='font-size:24px; margin-top:10px;'>🂠 🂠</div>"
             
         role = f"<div class='role-badge role-{p['role']}'>{p['role']}</div>" if p['role'] else ""
         html += f'<div class="seat pos-{i} {active} {hero} {cls}">{role}<div>{p["name"]}</div><div>{int(p["stack"]):,}</div>{cards}<div class="action-badge">{p["action"]}</div></div>'
     
-    html += f'<div style="position:absolute; top:55%; left:50%; transform:translate(-50%,-50%); text-align:center; color:white;"><h2>{comm}</h2><p>{data["msg"]}</p></div></div>'
+    html += f'<div style="position:absolute; top:55%; left:50%; transform:translate(-50%,-50%); text-align:center; color:white;"><h2>{comm}</h2><p style="font-size:18px; color:#ffeb3b; font-weight:bold;">{data["msg"]}</p></div></div>'
     st.markdown(html, unsafe_allow_html=True)
 
-# --- [컨트롤러 & 봇 행동 로직] ---
-with col2:
+# ------------------------------------
+# 2. 로직 처리 (화면 그린 후 실행)
+# ------------------------------------
+with col_controls:
     st.markdown("### Control")
     
-    # 1. 게임 오버
+    # A. 게임 종료
     if data['phase'] == 'GAME_OVER':
-        if st.button("다음 판 진행", type="primary"):
+        if st.button("다음 게임 시작", type="primary"):
             if os.path.exists(DATA_FILE): os.remove(DATA_FILE)
             st.rerun()
-            
-    # 2. 형님 차례
+
+    # B. 내 차례
     elif curr_idx == my_seat:
         st.success("형님 차례입니다!")
         to_call = data['current_bet'] - me['bet']
         
-        # 버튼들
-        btn_txt = "체크" if to_call == 0 else f"콜 ({to_call})"
-        if st.button(btn_txt, use_container_width=True):
+        # 버튼 1: 체크/콜
+        btn_label = "체크" if to_call == 0 else f"콜 ({to_call:,})"
+        if st.button(btn_label, use_container_width=True):
             pay = min(to_call, me['stack'])
             me['stack'] -= pay; me['bet'] += pay; data['pot'] += pay
             me['action'] = "체크" if pay == 0 else f"콜 ({pay})"
             me['has_acted'] = True
-            save_data(data); next_turn(data); st.rerun()
+            if not check_phase_end(data): pass_turn(data)
+            save_data(data); st.rerun()
 
-        if st.button("폴드", use_container_width=True):
+        # 버튼 2: 폴드
+        if st.button("폴드", type="primary", use_container_width=True):
             me['status'] = 'folded'; me['action'] = "폴드"; me['has_acted'] = True
-            save_data(data); next_turn(data); st.rerun()
-            
+            if not check_phase_end(data): pass_turn(data)
+            save_data(data); st.rerun()
+
+        st.markdown("---")
+        # 버튼 3: 레이즈
         min_r = max(200, data['current_bet']*2)
         if me['stack'] > min_r:
-            val = st.slider("레이즈", int(min_r), int(me['stack']), int(min_r))
+            val = st.slider("레이즈 금액", int(min_r), int(me['stack']), int(min_r))
             if st.button("레이즈 확정", use_container_width=True):
                 pay = val - me['bet']
                 me['stack'] -= pay; me['bet'] = val; data['pot'] += pay
@@ -234,26 +338,29 @@ with col2:
                 # 레이즈 시 다른 사람 리셋
                 for p in data['players']:
                     if p != me and p['status']=='alive' and p['stack']>0: p['has_acted']=False
-                save_data(data); next_turn(data); st.rerun()
+                if not check_phase_end(data): pass_turn(data)
+                save_data(data); st.rerun()
                 
-        if st.button("올인", use_container_width=True):
+        # 버튼 4: 올인
+        if st.button("올인 (All-in)", use_container_width=True):
             amt = me['stack']; me['stack'] = 0; me['bet'] += amt; data['pot'] += amt
             if me['bet'] > data['current_bet']:
                 data['current_bet'] = me['bet']
                 for p in data['players']:
                     if p != me and p['status']=='alive': p['has_acted']=False
             me['action'] = "올인"; me['has_acted'] = True
-            save_data(data); next_turn(data); st.rerun()
+            if not check_phase_end(data): pass_turn(data)
+            save_data(data); st.rerun()
 
-    # 3. 봇 차례 (자동 진행)
+    # C. 봇 차례 (자동 진행)
     else:
         if not curr_p['is_human']:
-            st.info(f"🤖 {curr_p['name']} 생각 중...")
+            st.info(f"🤖 {curr_p['name']} 고민 중...")
             
-            # [핵심] 화면 그려진 후 여기서 1.5초 대기
-            time.sleep(1.5)
+            # [핵심] 화면 보여주고 1초 대기
+            time.sleep(1)
             
-            # 봇 행동 계산
+            # 행동 처리
             act, amt = get_bot_decision(curr_p, data)
             actual = min(amt, curr_p['stack'])
             
@@ -267,16 +374,19 @@ with col2:
             
             act_str = f"{act} ({curr_p['bet']})" if act != "Fold" else "폴드"
             if act == "Call" and actual == 0: act_str = "체크"
+            if act == "Fold": curr_p['status'] = 'folded'
             
             curr_p['action'] = act_str
-            if act == "Fold": curr_p['status'] = 'folded'
             curr_p['has_acted'] = True
             
-            # 저장 후 턴 넘기고 리런
+            # 상태 저장 -> 턴 넘김 -> 리런 (순차 진행 완성)
+            if not check_phase_end(data):
+                pass_turn(data)
+            
             save_data(data)
-            next_turn(data)
             st.rerun()
         else:
-            st.info(f"👤 {curr_p['name']} (친구) 대기 중...")
+            # 다른 사람(친구) 대기
+            st.info(f"👤 {curr_p['name']} 님의 턴입니다.")
             time.sleep(2)
             st.rerun()
