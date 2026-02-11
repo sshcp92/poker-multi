@@ -5,7 +5,7 @@ import os
 import json
 
 # ==========================================
-# 1. 설정 & 디자인 (형님 원판 100% 스타일)
+# 1. 설정 & 디자인 (모바일 최적화 적용)
 # ==========================================
 st.set_page_config(layout="wide", page_title="AI 몬스터 토너먼트 - FULL", page_icon="🦁")
 
@@ -20,30 +20,44 @@ RANKS = '23456789TJQKA'
 SUITS = ['♠', '♥', '♦', '♣']
 DISPLAY_MAP = {'T': '10', 'J': 'J', 'Q': 'Q', 'K': 'K', 'A': 'A'}
 
+# [수정] 모바일 아이폰 16 최적화 CSS
 st.markdown("""<style>
 .stApp {background-color:#121212;}
-.top-hud { display: flex; justify-content: space-around; align-items: center; background: #333; padding: 10px; border-radius: 10px; margin-bottom: 5px; border: 1px solid #555; color: white; font-weight: bold; font-size: 16px; }
-.hud-time { color: #ffeb3b; font-size: 20px; }
-.game-board-container { position:relative; width:100%; height:650px; margin:0 auto; background-color:#1e1e1e; border-radius:30px; border:4px solid #333; overflow: hidden; }
-.poker-table { position:absolute; top:45%; left:50%; transform:translate(-50%,-50%); width: 90%; height: 460px; background: radial-gradient(#5d4037, #3e2723); border: 20px solid #281915; border-radius: 250px; box-shadow: inset 0 0 50px rgba(0,0,0,0.8); }
-.seat { position:absolute; width:140px; height:160px; background:#2c2c2c; border:3px solid #666; border-radius:15px; color:white; text-align:center; font-size:12px; display:flex; flex-direction:column; justify-content:flex-start; padding-top: 10px; align-items:center; z-index:10; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-.pos-0 {top:30px; right:25%;} .pos-1 {top:110px; right:5%;} .pos-2 {bottom:110px; right:5%;} .pos-3 {bottom:30px; right:25%;} .pos-4 {bottom:30px; left:50%; transform:translateX(-50%);} .pos-5 {bottom:30px; left:25%;} .pos-6 {bottom:110px; left:5%;} .pos-7 {top:110px; left:5%;} .pos-8 {top:30px; left:25%;}
-.hero-seat { border:4px solid #ffd700; background:#3a3a3a; box-shadow:0 0 25px #ffd700; z-index: 20; transform: translateX(-50%) scale(1.1); }
-.active-turn { border:4px solid #ffeb3b !important; box-shadow: 0 0 20px #ffeb3b; transform: scale(1.05); transition: 0.3s; }
-.card-span {background:white; padding:2px 6px; border-radius:4px; margin:1px; font-weight:bold; font-size:26px; color:black; border:1px solid #ccc; line-height: 1.0; display:inline-block;}
-.role-badge { position: absolute; top: -10px; left: -10px; width: 30px; height: 30px; border-radius: 50%; color: black; font-weight: bold; line-height: 26px; border: 2px solid #333; z-index: 100; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+.top-hud { display: flex; justify-content: space-around; align-items: center; background: #333; padding: 8px; border-radius: 10px; margin-bottom: 5px; border: 1px solid #555; color: white; font-weight: bold; font-size: 13px; }
+.hud-time { color: #ffeb3b; font-size: 16px; }
+
+/* 반응형 게임 컨테이너 */
+.game-board-container { position:relative; width:100%; min-height:450px; height: 70vh; margin:0 auto; background-color:#1e1e1e; border-radius:20px; border:3px solid #333; overflow: hidden; }
+.poker-table { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width: 92%; height: 75%; background: radial-gradient(#5d4037, #3e2723); border: 12px solid #281915; border-radius: 150px; box-shadow: inset 0 0 30px rgba(0,0,0,0.8); }
+
+/* 시트 위치 및 크기 최적화 */
+.seat { position:absolute; width:100px; height:110px; background:#2c2c2c; border:2px solid #666; border-radius:12px; color:white; text-align:center; font-size:10px; display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:10; }
+.pos-0 {top:5%; right:20%;} .pos-1 {top:25%; right:3%;} .pos-2 {bottom:25%; right:3%;} .pos-3 {bottom:5%; right:20%;} 
+.pos-4 {bottom:2%; left:50%; transform:translateX(-50%);} 
+.pos-5 {bottom:5%; left:20%;} .pos-6 {bottom:25%; left:3%;} .pos-7 {top:25%; left:3%;} .pos-8 {top:5%; left:20%;}
+
+.hero-seat { border:3px solid #ffd700; background:#3a3a3a; box-shadow:0 0 15px #ffd700; z-index: 20; }
+.active-turn { border:3px solid #ffeb3b !important; box-shadow: 0 0 15px #ffeb3b; }
+
+.card-span {background:white; padding:1px 4px; border-radius:4px; margin:1px; font-weight:bold; font-size:18px; color:black; border:1px solid #ccc; display:inline-block;}
+.comm-card-span { font-size: 28px !important; padding: 3px 6px !important; }
+
+.role-badge { position: absolute; top: -8px; left: -8px; width: 24px; height: 24px; border-radius: 50%; color: black; font-weight: bold; line-height: 22px; border: 1px solid #333; z-index: 100; font-size: 11px; }
 .role-D { background: #ffeb3b; } .role-SB { background: #90caf9; } .role-BB { background: #ef9a9a; }
-.action-badge { position: absolute; bottom: -15px; background:#ffeb3b; color:black; font-weight:bold; padding:2px 8px; border-radius:4px; font-size: 12px; border: 1px solid #000; z-index:100; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
-.fold-text { color: #ff5252; font-weight: bold; font-size: 20px; margin-top: 30px; text-shadow: 1px 1px 2px black; }
-.folded-seat { opacity: 0.5; border: 3px solid #444 !important; }
-.comm-card-span { font-size: 42px !important; padding: 4px 8px !important; }
-.turn-timer { position: absolute; top: -25px; width: 100%; text-align: center; color: #ff5252; font-weight: bold; font-size: 16px; text-shadow: 1px 1px 2px black; }
+
+.action-badge { position: absolute; bottom: -12px; background:#ffeb3b; color:black; font-weight:bold; padding:1px 5px; border-radius:4px; font-size: 10px; border: 1px solid #000; z-index:100; white-space: nowrap; }
+.fold-text { color: #ff5252; font-weight: bold; font-size: 14px; }
+.folded-seat { opacity: 0.4; }
+.turn-timer { position: absolute; top: -20px; width: 100%; text-align: center; color: #ff5252; font-weight: bold; font-size: 12px; }
+
+/* 모바일 컨트롤러 텍스트 크기 조절 */
+.stButton>button { font-size: 14px !important; height: 45px !important; }
 </style>""", unsafe_allow_html=True)
 
 # ==========================================
-# 2. 데이터 엔진 (고유 세션 관리)
+# 2. 데이터 엔진 (멀티플레이어 고유 파일)
 # ==========================================
-DATA_FILE = "poker_full_v3_multi.json"
+DATA_FILE = "poker_full_v4_allin.json"
 
 def init_game_data():
     deck = [r+s for r in RANKS for s in SUITS]; random.shuffle(deck)
@@ -115,7 +129,7 @@ def get_bot_decision(player, data):
     if to_call == 0: return "Check", 0
     fold_thresh = 0.2 if player['style'] == 'Tight' else 0.1
     if roll < fold_thresh: return "Fold", 0
-    raise_thresh = 0.7 if player['style'] == 'Aggressive' else 0.85
+    raise_thresh = 0.8 if player['style'] == 'Aggressive' else 0.92
     if roll > raise_thresh: return "Raise", max(data['bb']*2, data['current_bet']*2)
     return "Call", to_call
 
@@ -127,8 +141,11 @@ def check_phase_end(data):
     if len(active) <= 1:
         winner = active[0]; winner['stack'] += data['pot']
         data['msg'] = f"🏆 {winner['name']} 승리! (All Fold)"; data['phase'] = 'GAME_OVER'; save_data(data); return True
-    bet_target = data['current_bet']; all_acted = all(p['has_acted'] for p in active)
-    all_matched = all(p['bet'] == bet_target or p['stack'] == 0 for p in active)
+    
+    target = data['current_bet']
+    all_acted = all(p['has_acted'] for p in active)
+    all_matched = all(p['bet'] == target or p['stack'] == 0 for p in active)
+    
     if all_acted and all_matched:
         deck = data['deck']; next_p = False
         if data['phase'] == 'PREFLOP': data['phase']='FLOP'; data['community']=[deck.pop() for _ in range(3)]; next_p=True
@@ -165,45 +182,35 @@ def pass_turn(data):
     data['turn_start_time'] = time.time(); save_data(data)
 
 # ==========================================
-# 5. 입장 처리 (방 갈림 및 중도 입장 로직 수정)
+# 5. 입장 처리
 # ==========================================
 if 'my_seat' not in st.session_state:
-    st.title("🦁 AI 몬스터 토너먼트 (Multi-Player)")
+    st.title("🦁 AI 몬스터 토너먼트 (Mobile Ver.)")
     u_name = st.text_input("닉네임", value="형님")
     col1, col2 = st.columns(2)
     if col1.button("입장하기", type="primary"):
-        data = load_data()
-        target = -1
-        # [수정] 내 닉네임이 이미 서버에 있는지 확인 (재접속 처리)
+        data = load_data(); target = -1
         for i, p in enumerate(data['players']):
             if p['is_human'] and p['name'] == u_name: target = i; break
-        
-        # [수정] 신규 유저 입장
         if target == -1:
-            # 빈 자리(봇 자리) 찾기 (형님 자리는 4번 고정 시도)
             if not data['players'][4]['is_human']: target = 4
             else:
                 for i in range(9):
                     if not data['players'][i]['is_human']: target = i; break
-            
             if target != -1:
-                # [중요] 게임 도중 들어오면 'folded' 상태로 대기하게 함
                 data['players'][target] = {
                     'name': u_name, 'seat': target + 1, 'stack': 100000, 
                     'hand': [data['deck'].pop(), data['deck'].pop()], 'bet': 0,
                     'status': 'folded' if data['phase'] != 'PREFLOP' or data['community'] else 'alive',
-                    'action': '관전 대기 중' if data['community'] else '입장완료',
-                    'is_human': True, 'role': data['players'][target]['role'], 
+                    'action': '관전 중', 'is_human': True, 'role': data['players'][target]['role'], 
                     'has_acted': True if data['community'] else False, 'style': 'Hero'
                 }
                 save_data(data)
-        
         if target != -1:
             st.session_state['my_seat'] = target
-            st.session_state['my_name'] = u_name # 세션에 닉네임 고정
+            st.session_state['my_name'] = u_name
             st.rerun()
-            
-    if col2.button("서버 초기화 (오류 시 클릭)"):
+    if col2.button("서버 초기화"):
         if os.path.exists(DATA_FILE): os.remove(DATA_FILE)
         st.rerun()
     st.stop()
@@ -213,75 +220,81 @@ if 'my_seat' not in st.session_state:
 # ==========================================
 data = load_data()
 my_seat = st.session_state.get('my_seat', -1)
-# 세션 유지 체크 (닉네임 바뀌는 것 방지)
 if my_seat != -1 and data['players'][my_seat]['name'] != st.session_state.get('my_name'):
     data['players'][my_seat]['name'] = st.session_state['my_name']
     data['players'][my_seat]['is_human'] = True
     save_data(data)
 
 me = data['players'][my_seat]
-curr_idx = data['turn_idx']
-curr_p = data['players'][curr_idx]
-
-# 실시간 타이머
+curr_idx = data['turn_idx']; curr_p = data['players'][curr_idx]
 time_left = max(0, TURN_TIMEOUT - (time.time() - data['turn_start_time']))
+
 if data['phase'] != 'GAME_OVER' and time_left <= 0:
     if curr_p['status'] == 'alive':
-        curr_p['status'] = 'folded'; curr_p['action'] = "시간초과 폴드"; curr_p['has_acted'] = True
+        curr_p['status'] = 'folded'; curr_p['action'] = "시간초과"; curr_p['has_acted'] = True
         if not check_phase_end(data): pass_turn(data)
         save_data(data); st.rerun()
 
-# --- 화면 그리기 ---
+# --- 화면 그리기 (반응형 HUD) ---
 elapsed = time.time() - data['start_time']; lvl = min(len(BLIND_STRUCTURE), int(elapsed // LEVEL_DURATION) + 1)
 sb, bb, ante = BLIND_STRUCTURE[lvl-1]; timer_str = f"{int(600-(elapsed%600))//60:02d}:{int(600-(elapsed%600))%60:02d}"
 alive_p = [p for p in data['players'] if p['stack'] > 0]; avg_stack = sum(p['stack'] for p in alive_p) // len(alive_p) if alive_p else 0
 
-st.markdown(f'<div class="top-hud"><div>LEVEL {lvl}</div><div class="hud-time">{timer_str}</div><div>🟡 {sb}/{bb} (A{ante})</div><div>평균 스택 (Avg Stack) : {avg_stack:,}</div></div>', unsafe_allow_html=True)
+st.markdown(f'<div class="top-hud"><div>LV {lvl}</div><div class="hud-time">{timer_str}</div><div>🟡 {sb}/{bb} (A{ante})</div><div>Avg: {avg_stack:,}</div></div>', unsafe_allow_html=True)
 
-col_table, col_controls = st.columns([3, 1])
+# 모바일 대응: 보드를 상단에, 버튼을 하단에 배치
+col_table, col_controls = st.columns([1, 1]) if st.session_state.get('is_mobile') else st.columns([3, 1])
+
+# 보드 렌더링
 with col_table:
     html = '<div class="game-board-container"><div class="poker-table"></div>'
     comm = "".join([make_comm_card(c) for c in data['community']])
     for i in range(9):
         p = data['players'][i]; active = "active-turn" if i == curr_idx and data['phase'] != 'GAME_OVER' else ""
-        hero = "hero-seat" if i == my_seat else ""; timer_html = f'<div class="turn-timer">⏰ {int(time_left)}초</div>' if i == curr_idx and data['phase'] != 'GAME_OVER' else ""
+        hero = "hero-seat" if i == my_seat else ""; timer_html = f'<div class="turn-timer">⏰ {int(time_left)}s</div>' if i == curr_idx and data['phase'] != 'GAME_OVER' else ""
         if p['status'] == 'folded': cards = "<div class='fold-text'>FOLD</div>"; cls = "folded-seat"
         else:
             cls = ""
             if i == my_seat or (data['phase'] == 'GAME_OVER' and p['status'] == 'alive'):
                 cards = f"<div>{make_card(p['hand'][0])}{make_card(p['hand'][1])}</div>" if p['hand'] else ""
-            else: cards = "<div style='font-size:24px; margin-top:10px;'>🂠 🂠</div>"
+            else: cards = "<div style='font-size:16px;'>🂠 🂠</div>"
         role = f"<div class='role-badge role-{p['role']}'>{p['role']}</div>" if p['role'] else ""
-        html += f'<div class="seat pos-{i} {active} {hero} {cls}">{timer_html}{role}<div>{p["name"]}</div><div>{int(p["stack"]):,}</div>{cards}<div class="action-badge">{p["action"]}</div></div>'
-    html += f'<div style="position:absolute; top:48%; left:50%; transform:translate(-50%,-50%); text-align:center; color:white;"><div style="margin-bottom:15px;">{comm}</div><h2 style="margin:0;">Pot: {data["pot"]:,}</h2><p style="font-size:18px; color:#ffeb3b; font-weight:bold; margin-top:5px;">{data["msg"]}</p></div></div>'
+        html += f'<div class="seat pos-{i} {active} {hero} {cls}">{timer_html}{role}<div style="font-weight:bold;">{p["name"]}</div><div>{int(p["stack"]):,}</div>{cards}<div class="action-badge">{p["action"]}</div></div>'
+    html += f'<div style="position:absolute; top:45%; left:50%; transform:translate(-50%,-50%); text-align:center; color:white;"><div style="margin-bottom:10px;">{comm}</div><h3 style="margin:0; font-size:18px;">Pot: {data["pot"]:,}</h3><p style="font-size:14px; color:#ffeb3b; font-weight:bold; margin-top:2px;">{data["msg"]}</p></div></div>'
     st.markdown(html, unsafe_allow_html=True)
 
+# 컨트롤러 렌더링
 with col_controls:
-    st.markdown("### Control")
     if data['phase'] == 'GAME_OVER':
-        if st.button("다음 게임 시작", type="primary"):
-            # 다음 게임 시 봇 리셋 방지 및 유저 유지
+        if st.button("다음 게임 시작", use_container_width=True, type="primary"):
             new_data = init_game_data()
             for i in range(9):
-                if data['players'][i]['is_human']:
-                    new_data['players'][i]['name'] = data['players'][i]['name']
-                    new_data['players'][i]['is_human'] = True
+                if data['players'][i]['is_human']: new_data['players'][i]['name'] = data['players'][i]['name']; new_data['players'][i]['is_human'] = True
             save_data(new_data); st.rerun()
     elif curr_idx == my_seat and me['status'] == 'alive':
-        st.success(f"형님 차례! (남은 시간: {int(time_left)}초)"); to_call = data['current_bet'] - me['bet']
-        if st.button("체크" if to_call == 0 else f"콜 ({to_call:,})", use_container_width=True):
+        st.success(f"내 차례! ({int(time_left)}초)"); to_call = data['current_bet'] - me['bet']
+        c1, c2 = st.columns(2)
+        if c1.button("체크/콜", use_container_width=True):
             pay = min(to_call, me['stack']); me['stack'] -= pay; me['bet'] += pay; data['pot'] += pay; me['has_acted'] = True
             me['action'] = "체크" if pay == 0 else f"콜 ({pay})"
             if not check_phase_end(data): pass_turn(data)
             save_data(data); st.rerun()
-        if st.button("폴드", type="primary", use_container_width=True):
+        if c2.button("폴드", type="primary", use_container_width=True):
             me['status'] = 'folded'; me['has_acted'] = True; me['action'] = "폴드"
+            if not check_phase_end(data): pass_turn(data)
+            save_data(data); st.rerun()
+        if st.button("🚨 올인 (ALL-IN)", use_container_width=True):
+            pay = me['stack']; me['stack'] = 0; me['bet'] += pay; data['pot'] += pay; me['has_acted'] = True
+            if me['bet'] > data['current_bet']: data['current_bet'] = me['bet']
+            for p in data['players']:
+                if p != me and p['status'] == 'alive' and p['stack'] > 0: p['has_acted'] = False
+            me['action'] = "올인!"; 
             if not check_phase_end(data): pass_turn(data)
             save_data(data); st.rerun()
         st.markdown("---")
         min_r = max(200, data['current_bet']*2)
-        if me['stack'] > min_r:
-            val = st.slider("레이즈 금액", int(min_r), int(me['stack']), int(min_r))
+        if me['stack'] > to_call:
+            val = st.slider("레이즈", int(min_r), int(me['stack'] + me['bet']), int(min_r))
             if st.button("레이즈 확정", use_container_width=True):
                 pay = val - me['bet']; me['stack'] -= pay; me['bet'] = val; data['pot'] += pay; data['current_bet'] = val; me['has_acted'] = True
                 for p in data['players']:
@@ -289,8 +302,8 @@ with col_controls:
                 if not check_phase_end(data): pass_turn(data)
                 save_data(data); st.rerun()
         time.sleep(1); st.rerun()
-    elif me['status'] == 'folded':
-        st.warning("이번 판은 관전 중입니다. 다음 판부터 참여합니다."); time.sleep(1); st.rerun()
+    elif me['status'] == 'folded' and data['phase'] != 'GAME_OVER':
+        st.warning("관전 중..."); time.sleep(1); st.rerun()
     else:
         if not curr_p['is_human']:
             time.sleep(1); act, amt = get_bot_decision(curr_p, data); actual = min(amt, curr_p['stack'])
@@ -305,4 +318,4 @@ with col_controls:
             if not check_phase_end(data): pass_turn(data)
             save_data(data); st.rerun()
         else:
-            st.info(f"👤 {curr_p['name']} 님의 턴입니다. (남은 시간: {int(time_left)}초)"); time.sleep(1); st.rerun()
+            st.info(f"👤 {curr_p['name']} 턴 ({int(time_left)}s)"); time.sleep(1); st.rerun()
