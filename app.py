@@ -5,9 +5,9 @@ import time
 import os
 
 # ==========================================
-# 1. 디자인 및 스타일 (9-Max 간지 유지)
+# 1. 디자인 및 스타일 (형님 취향 9-Max)
 # ==========================================
-st.set_page_config(layout="wide", page_title="🦁 형님의 리얼 멀티 포커", page_icon="🦁")
+st.set_page_config(layout="wide", page_title="🦁 형님의 리얼 멀티 포커판", page_icon="🦁")
 
 st.markdown("""<style>
 .stApp {background-color:#121212;}
@@ -21,7 +21,7 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 
 # ==========================================
-# 2. 데이터 관리 (오류 방지 로직 추가)
+# 2. 데이터 관리 (자동 초기화 로직 강화)
 # ==========================================
 DB_FILE = "poker_db.csv"
 STATE_FILE = "state.txt"
@@ -31,44 +31,32 @@ def init_game():
     suits = ['♠', '♥', '♦', '♣']
     deck = [r+s for r in ranks for s in suits]
     random.shuffle(deck)
-    
     players = []
     for i in range(9):
-        players.append({
-            'name': f'Empty', 
-            'seat': i, 
-            'stack': 60000, 
-            'hand': f"{deck.pop()},{deck.pop()}", 
-            'bet': 0, 
-            'status': 'alive', 
-            'action': '', 
-            'is_joined': False
-        })
-    
+        players.append({'name': 'Empty', 'seat': i, 'stack': 60000, 'hand': f"{deck.pop()},{deck.pop()}", 'bet': 0, 'status': 'alive', 'action': '', 'is_joined': False})
     df = pd.DataFrame(players)
     df.to_csv(DB_FILE, index=False)
-    
     with open(STATE_FILE, "w", encoding='utf-8') as f:
         comm = ",".join([deck.pop() for _ in range(5)])
-        f.write(f"0|200|0|PREFLOP|{comm}|0|게임을 시작하려면 입장하세요!")
+        f.write(f"0|200|0|PREFLOP|{comm}|0|친구들을 기다리고 있습니다!")
 
 def load_data():
-    if not os.path.exists(DB_FILE) or not os.path.exists(STATE_FILE):
-        init_game()
-    
-    df = pd.read_csv(DB_FILE)
-    # KeyError 방지: 모든 컬럼이 있는지 강제 확인
-    cols = ['name', 'seat', 'stack', 'hand', 'bet', 'status', 'action', 'is_joined']
-    for col in cols:
-        if col not in df.columns:
+    # 파일이 없거나 꼬여있으면 무조건 초기화
+    try:
+        if not os.path.exists(DB_FILE) or not os.path.exists(STATE_FILE):
+            init_game()
+        df = pd.read_csv(DB_FILE)
+        # 필수 컬럼 'is_joined'가 없으면 초기화
+        if 'is_joined' not in df.columns:
             init_game()
             df = pd.read_csv(DB_FILE)
-            break
-
-    with open(STATE_FILE, "r", encoding='utf-8') as f:
-        s = f.read().split('|')
-        state = {'pot':int(s[0]), 'cur_bet':int(s[1]), 'turn':int(s[2]), 'phase':s[3], 'comm':s[4], 'open':int(s[5]), 'msg':s[6]}
-    return df, state
+        with open(STATE_FILE, "r", encoding='utf-8') as f:
+            s = f.read().split('|')
+            state = {'pot':int(s[0]), 'cur_bet':int(s[1]), 'turn':int(s[2]), 'phase':s[3], 'comm':s[4], 'open':int(s[5]), 'msg':s[6]}
+        return df, state
+    except:
+        init_game()
+        return load_data()
 
 def save_data(df, state):
     df.to_csv(DB_FILE, index=False)
@@ -76,23 +64,23 @@ def save_data(df, state):
         f.write(f"{state['pot']}|{state['cur_bet']}|{state['turn']}|{state['phase']}|{state['comm']}|{state['open']}|{state['msg']}")
 
 # ==========================================
-# 3. 입장 및 랜덤 좌석 배정 로직
+# 3. 메인 실행부
 # ==========================================
 df, state = load_data()
 
+# 로그인/입장 단계
 if 'my_seat' not in st.session_state:
     st.title("🦁 형님의 리얼 멀티 포커판")
-    st.markdown("---")
-    user_name = st.text_input("사용할 닉네임을 입력하세요", placeholder="예: 한강타짜")
+    user_name = st.text_input("닉네임을 입력하세요", placeholder="예: 경기도타짜")
     
     if st.button("빈자리 랜덤 입장하기", type="primary"):
         if not user_name:
-            st.error("닉네임을 입력해야 입장 가능합니다!")
+            st.error("닉네임을 입력해주십쇼!")
         else:
-            # 빈자리 찾기
+            # 빈자리 찾아서 랜덤 배정
             empty_seats = df[df['is_joined'] == False]['seat'].tolist()
             if not empty_seats:
-                st.error("빈자리가 없습니다! ㅠㅠ")
+                st.error("자리가 꽉 찼습니다!")
             else:
                 chosen_seat = random.choice(empty_seats)
                 df.at[chosen_seat, 'name'] = user_name
@@ -102,19 +90,16 @@ if 'my_seat' not in st.session_state:
                 st.rerun()
     st.stop()
 
-# ==========================================
-# 4. 게임 화면 (디자인)
-# ==========================================
+# 게임 화면 (내 턴 아닐 때 자동 갱신)
 my_idx = st.session_state['my_seat']
-# 다른 사람이 들어왔는지 확인하기 위해 2초마다 갱신
 if state['turn'] != my_idx and state['phase'] != 'SHOWDOWN':
     time.sleep(2); st.rerun()
 
-st.markdown(f"### 📍 내 자리: **{df.iloc[my_idx]['name']}** (Player {my_idx+1}) | 💰 {df.iloc[my_idx]['stack']:,}")
-
+# [디자인 렌더링]
+st.markdown(f"### 📍 내 이름: **{df.iloc[my_idx]['name']}** | 💰 잔액: {df.iloc[my_idx]['stack']:,}")
 html_code = '<div class="game-board-container"><div class="poker-table"></div>'
 comm_list = state['comm'].split(',')
-display_comm = "".join([f"<span class='card-span'>{c}</span>" for c in comm_list[:state['open']]]) if state['open'] > 0 else "<span style='color:#666;'>카드가 깔리는 중...</span>"
+display_comm = "".join([f"<span class='card-span'>{c}</span>" for c in comm_list[:state['open']]]) if state['open'] > 0 else "<span style='color:#666;'>딜링 중...</span>"
 
 for i in range(9):
     p = df.iloc[i]
@@ -129,17 +114,14 @@ for i in range(9):
     
     name_display = f"<b>{p['name']}</b>" if p['is_joined'] else "<i>Waiting...</i>"
     stack_val = f"{int(p['stack']):,}" if p['is_joined'] else "-"
-    
     html_code += f'<div class="seat pos-{i} {active} {my_highlight}"><div>{name_display}</div><div>{stack_val}</div>{cards}<div style="color:#ffeb3b; font-size:11px; font-weight:bold;">{p["action"]}</div></div>'
 
 html_code += f'<div style="position:absolute; top:45%; left:50%; transform:translate(-50%,-50%); text-align:center; color:white; width:100%;"><h2>POT: {state["pot"]:,}</h2><div style="margin-bottom:10px;">{display_comm}</div><p style="background:rgba(0,0,0,0.6); padding:5px; border-radius:5px;">{state["msg"]}</p></div></div>'
 st.markdown(html_code, unsafe_allow_html=True)
 
-# ==========================================
-# 5. 액션 버튼 패널
-# ==========================================
+# [액션 버튼 패널]
 st.markdown("---")
-if state['turn'] == my_idx and state['phase'] != 'SHOWDOWN':
+if state['turn'] == my_idx:
     st.info("📢 형님 차례입니다!")
     c1, c2, c3, c4 = st.columns(4)
     if c1.button("✅ Check/Call", use_container_width=True):
@@ -153,12 +135,12 @@ if state['turn'] == my_idx and state['phase'] != 'SHOWDOWN':
     if c3.button("❌ Fold", use_container_width=True):
         df.at[my_idx, 'action'] = "Fold"; state['turn'] = (state['turn'] + 1) % 9
         save_data(df, state); st.rerun()
-    if c4.button("➡️ 다음 카드 열기", type="primary", use_container_width=True):
-        if state['open'] == 0: state['open'] = 3; state['phase'] = 'FLOP'; state['msg'] = "플랍이 열렸습니다!"
-        elif state['open'] == 3: state['open'] = 4; state['phase'] = 'TURN'; state['msg'] = "턴 카드가 공개되었습니다!"
-        elif state['open'] == 4: state['open'] = 5; state['phase'] = 'RIVER'; state['msg'] = "마지막 리버 카드입니다!"
+    if c4.button("➡️ 다음 카드 오픈 (딜러)", type="primary", use_container_width=True):
+        if state['open'] == 0: state['open'] = 3; state['phase'] = 'FLOP'; state['msg'] = "플랍 오픈!"
+        elif state['open'] == 3: state['open'] = 4; state['phase'] = 'TURN'; state['msg'] = "턴 오픈!"
+        elif state['open'] == 4: state['open'] = 5; state['phase'] = 'RIVER'; state['msg'] = "리버 오픈!"
         else: state['phase'] = 'SHOWDOWN'; state['msg'] = "게임 종료!"
         save_data(df, state); st.rerun()
 
-if st.sidebar.button("💾 판 갈기 (전체 초기화)"):
+if st.sidebar.button("💾 데이터 싹 갈기 (초기화)"):
     init_game(); st.rerun()
