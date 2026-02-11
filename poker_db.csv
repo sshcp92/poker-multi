@@ -1,1 +1,10 @@
 name,seat,stack,hand,bet,status,action,is_joined
+Empty,0,60000,"AS,KS",0,waiting,,False
+Empty,1,60000,"QS,JS",0,waiting,,False
+Empty,2,60000,"TS,9S",0,waiting,,False
+Empty,3,60000,"8S,7S",0,waiting,,False
+Empty,4,60000,"6S,5S",0,waiting,,False
+Empty,5,60000,"4S,3S",0,waiting,,False
+Empty,6,60000,"2S,AH",0,waiting,,False
+Empty,7,60000,"KH,QH",0,waiting,,False
+Empty,8,60000,"JH,TH",0,waiting,,False
