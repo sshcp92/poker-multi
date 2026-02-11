@@ -50,6 +50,7 @@ def init_game_data():
     players = []
     bot_names = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India"]
     styles = ['Tight', 'Aggressive', 'Normal', 'Tight', 'Hero', 'Normal', 'Aggressive', 'Tight', 'Normal']
+    
     for i in range(9):
         players.append({
             'name': bot_names[i], 'seat': i+1, 'stack': 100000, 
@@ -57,9 +58,11 @@ def init_game_data():
             'action': '', 'is_human': False, 'role': '', 'has_acted': False,
             'style': styles[i]
         })
+    
     players[0]['role'] = 'D'; players[1]['role'] = 'SB'; players[2]['role'] = 'BB'
     players[1]['stack']-=100; players[1]['bet']=100; players[1]['action']='SB 100'; players[1]['has_acted']=True
     players[2]['stack']-=200; players[2]['bet']=200; players[2]['action']='BB 200'; players[2]['has_acted']=True
+    
     return {
         'players': players, 'pot': 300, 'deck': deck, 'community': [],
         'phase': 'PREFLOP', 'current_bet': 200, 'turn_idx': 3,
@@ -80,13 +83,15 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding='utf-8') as f: json.dump(data, f)
 
 # ==========================================
-# 3. 족보 및 카드 유틸
+# 3. 족보 계산 & 유틸리티
 # ==========================================
 def r_str(r): return DISPLAY_MAP.get(r, r)
+
 def make_card(card):
     if not card or len(card) < 2: return "🂠"
     color = "red" if card[1] in ['♥', '♦'] else "black"
     return f"<span class='card-span' style='color:{color}'>{r_str(card[0])}{card[1]}</span>"
+
 def make_comm_card(card):
     if not card or len(card) < 2: return "🂠"
     color = "red" if card[1] in ['♥', '♦'] else "black"
@@ -135,9 +140,11 @@ def check_phase_end(data):
         winner = active[0]; winner['stack'] += data['pot']
         data['msg'] = f"🏆 {winner['name']} 승리! (All Fold)"
         data['phase'] = 'GAME_OVER'; save_data(data); return True
+
     bet_target = data['current_bet']
     all_acted = all(p['has_acted'] for p in active)
     all_matched = all(p['bet'] == bet_target or p['stack'] == 0 for p in active)
+    
     if all_acted and all_matched:
         deck = data['deck']
         next_p = False
@@ -154,6 +161,7 @@ def check_phase_end(data):
             split = data['pot'] // len(winners)
             for w in winners: w['stack'] += split
             data['pot'] = 0; data['phase'] = 'GAME_OVER'; save_data(data); return True
+            
         if next_p:
             data['current_bet'] = 0
             for p in data['players']:
@@ -192,9 +200,7 @@ if 'my_seat' not in st.session_state:
             if data['players'][4]['is_human']:
                 for i in range(9): 
                     if not data['players'][i]['is_human']: target = i; break
-            data['players'][target]['name'] = u_name
-            data['players'][target]['is_human'] = True
-            data['players'][target]['status'] = 'alive'
+            data['players'][target]['name'] = u_name; data['players'][target]['is_human'] = True; data['players'][target]['status'] = 'alive'
             save_data(data)
         st.session_state['my_seat'] = target
         st.rerun()
@@ -214,18 +220,14 @@ me = data['players'][my_seat]
 curr_idx = data['turn_idx']
 curr_p = data['players'][curr_idx]
 
-# [수정] 실시간 타이머 작동을 위한 루프
 time_left = max(0, TURN_TIMEOUT - (time.time() - data['turn_start_time']))
 
-# 30초 타임아웃 체크
 if data['phase'] != 'GAME_OVER' and time_left <= 0:
     curr_p['status'] = 'folded'; curr_p['action'] = "시간초과 폴드"; curr_p['has_acted'] = True
     if not check_phase_end(data): pass_turn(data)
     save_data(data); st.rerun()
 
-# ------------------------------------
-# 1. 화면 그리기
-# ------------------------------------
+# --- 화면 그리기 ---
 elapsed = time.time() - data['start_time']
 lvl = min(len(BLIND_STRUCTURE), int(elapsed // LEVEL_DURATION) + 1)
 sb, bb, ante = BLIND_STRUCTURE[lvl-1]
@@ -257,9 +259,6 @@ with col_table:
     html += f'<div style="position:absolute; top:48%; left:50%; transform:translate(-50%,-50%); text-align:center; color:white;"><div style="margin-bottom:15px;">{comm}</div><h2 style="margin:0;">Pot: {data["pot"]:,}</h2><p style="font-size:18px; color:#ffeb3b; font-weight:bold; margin-top:5px;">{data["msg"]}</p></div></div>'
     st.markdown(html, unsafe_allow_html=True)
 
-# ------------------------------------
-# 2. 로직 처리
-# ------------------------------------
 with col_controls:
     st.markdown("### Control")
     if data['phase'] == 'GAME_OVER':
@@ -270,8 +269,7 @@ with col_controls:
     elif curr_idx == my_seat:
         st.success(f"형님 차례! (남은 시간: {int(time_left)}초)")
         to_call = data['current_bet'] - me['bet']
-        btn_label = "체크" if to_call == 0 else f"콜 ({to_call:,})"
-        if st.button(btn_label, use_container_width=True):
+        if st.button("체크" if to_call == 0 else f"콜 ({to_call:,})", use_container_width=True):
             pay = min(to_call, me['stack']); me['stack'] -= pay; me['bet'] += pay; data['pot'] += pay
             me['action'] = "체크" if pay == 0 else f"콜 ({pay})"; me['has_acted'] = True
             if not check_phase_end(data): pass_turn(data)
@@ -300,11 +298,7 @@ with col_controls:
             me['action'] = "올인"; me['has_acted'] = True
             if not check_phase_end(data): pass_turn(data)
             save_data(data); st.rerun()
-            
-        # [핵심] 형님 차례일 때 타이머 갱신을 위해 1초마다 rerun
-        time.sleep(1)
-        st.rerun()
-
+        time.sleep(1); st.rerun()
     else:
         if not curr_p['is_human']:
             time.sleep(1)
@@ -321,7 +315,5 @@ with col_controls:
             if not check_phase_end(data): pass_turn(data)
             save_data(data); st.rerun()
         else:
-            # 친구 턴일 때도 타이머 갱신을 위해 1초마다 rerun
             st.info(f"👤 {curr_p['name']} 님의 턴입니다. (남은 시간: {int(time_left)}초)")
-            time.sleep(1)
-            st.rerun()
+            time.sleep(1); st.rerun()
