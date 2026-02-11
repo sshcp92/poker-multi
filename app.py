@@ -5,7 +5,7 @@ import time
 import os
 
 # ==========================================
-# 1. 디자인 및 설정 (형님 원판 그대로 FIX)
+# 1. 형님 원판 디자인 및 설정 (절대 고정)
 # ==========================================
 st.set_page_config(layout="wide", page_title="AI 몬스터 토너먼트", page_icon="🦁")
 
@@ -18,6 +18,7 @@ RANKS = '23456789TJQKA'
 SUITS = ['♠', '♥', '♦', '♣']
 DISPLAY_MAP = {'T': '10', 'J': 'J', 'Q': 'Q', 'K': 'K', 'A': 'A'}
 
+# [형님 원판 CSS 100% 복사]
 st.markdown("""<style>
 .stApp {background-color:#121212;}
 .top-hud { display: flex; justify-content: space-around; align-items: center; background: #333; padding: 10px; border-radius: 10px; margin-bottom: 5px; border: 1px solid #555; color: white; font-weight: bold; font-size: 16px; }
@@ -35,7 +36,7 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 
 # ==========================================
-# 2. 데이터베이스 연동 (멀티플레이 엔진)
+# 2. 멀티플레이어 통신 엔진 (CSV 연동)
 # ==========================================
 DB_FILE = "poker_db.csv"
 STATE_FILE = "state.txt"
@@ -48,8 +49,8 @@ def init_game():
     pd.DataFrame(players).to_csv(DB_FILE, index=False)
     with open(STATE_FILE, "w", encoding='utf-8') as f:
         comm = ",".join([deck.pop() for _ in range(5)])
-        f.write(f"0|200|0|PREFLOP|{comm}|0|Ready|100|200|0|0|1|{time.time()}")
-    if 'my_seat' in st.session_state: del st.session_state['my_seat']
+        f.write(f"0|200|0|PREFLOP|{comm}|0|게임을 시작하려면 입장하세요!|100|200|0|0|1|{time.time()}")
+    st.session_state.clear()
 
 def load_data():
     try:
@@ -72,11 +73,11 @@ def make_card(card):
     return f"<span class='card-span' style='color:{color}'>{card}</span>"
 
 # ==========================================
-# 3. 메인 게임 로직
+# 3. 메인 로직 및 렌더링 (형님 원판 그대로)
 # ==========================================
 df, state = load_data()
 
-# 타이머 & 블라인드 로직 (형님 원판)
+# 블라인드 및 타이머 로직 (형님 원판)
 elapsed = time.time() - state['start_time']
 lvl_idx = int(elapsed // LEVEL_DURATION)
 if lvl_idx < len(BLIND_STRUCTURE):
@@ -86,32 +87,33 @@ if lvl_idx < len(BLIND_STRUCTURE):
 else:
     timer_str = "MAX"
 
-# 입장 화면 (모바일에서도 시원하게 뚫리게 수정)
+# [입장 화면]
 if 'my_seat' not in st.session_state:
     st.title("🦁 몬스터 토너먼트 - 멀티")
-    u_name = st.text_input("닉네임 입력", value="👑 형님")
-    c1, c2 = st.columns(2)
-    if c1.button("랜덤 빈자리 입장"):
+    u_name = st.text_input("닉네임 입력", key="user_login_name")
+    col1, col2 = st.columns(2)
+    if col1.button("랜덤 빈자리 입장하기", type="primary"):
         empty_seats = df[df['is_joined'] == False].index.tolist()
         if u_name and empty_seats:
             idx = random.choice(empty_seats)
             df.at[idx, 'name'], df.at[idx, 'is_joined'], df.at[idx, 'status'] = u_name, True, 'alive'
-            # 딜러, 스몰, 빅 블라인드 자동 배정 로직
-            joined_count = df['is_joined'].sum()
-            if joined_count == 1: df.at[idx, 'role'] = 'D'
-            elif joined_count == 2: df.at[idx, 'role'] = 'SB'
-            elif joined_count == 3: df.at[idx, 'role'] = 'BB'
+            # 역할 배정
+            count = df['is_joined'].sum()
+            if count == 1: df.at[idx, 'role'] = 'D'
+            elif count == 2: df.at[idx, 'role'] = 'SB'
+            elif count == 3: df.at[idx, 'role'] = 'BB'
             save_data(df, state); st.session_state['my_seat'] = idx; st.rerun()
-    if c2.button("🆘 서버 초기화"):
+    if col2.button("🆘 서버 초기화"):
         init_game(); st.rerun()
     st.stop()
 
-# 게임 화면 렌더링
+# [메인 게임 화면]
 my_idx = st.session_state['my_seat']
-# 내 차례 아니면 2초마다 자동 갱신
+# 내 차례 아니면 자동 갱신 (빤짝임 방지 위해 3초)
 if state['turn'] != my_idx and state['phase'] != 'SHOWDOWN':
-    time.sleep(2); st.rerun()
+    time.sleep(3); st.rerun()
 
+# 상단 HUD 렌더링
 st.markdown(f'<div class="top-hud"><div>LEVEL {state["level"]}</div><div class="hud-time">⏱️ {timer_str}</div><div>🟡 {state["sb"]}/{state["bb"]} (A{state["ante"]})</div><div>📊 Avg: 60,000</div></div>', unsafe_allow_html=True)
 
 col_table, col_controls = st.columns([3, 1])
@@ -141,7 +143,7 @@ with col_table:
 with col_controls:
     st.markdown("### 🎮 Control Panel")
     if state['turn'] == my_idx:
-        st.success("📢 당신의 차례!")
+        st.success("📢 당신의 차례입니다!")
         to_call = int(state['cur_bet']) - int(df.at[my_idx, 'bet'])
         if st.button(f"✅ 콜/체크 ({to_call:,})", use_container_width=True):
             df.at[my_idx, 'stack'] -= to_call; df.at[my_idx, 'bet'] += to_call; state['pot'] += to_call
