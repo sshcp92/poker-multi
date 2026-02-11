@@ -1,5 +1,4 @@
 import streamlit as st
-import pandas as pd
 import random
 import time
 import os
@@ -35,9 +34,9 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 
 # ==========================================
-# 2. 데이터 엔진 (IndexError 자동 복구 기능 탑재)
+# 2. 데이터 엔진 (재접속 기능 추가)
 # ==========================================
-DATA_FILE = "poker_v2.json" # 파일명 변경 (기존 충돌 회피)
+DATA_FILE = "poker_v3.json" # 버전업 (충돌 방지)
 
 def init_game_data():
     deck = [r+s for r in RANKS for s in SUITS]; random.shuffle(deck)
@@ -59,19 +58,14 @@ def init_game_data():
     }
 
 def load_data():
-    # 1. 파일 없으면 생성
     if not os.path.exists(DATA_FILE):
         d = init_game_data(); save_data(d); return d
-    
-    # 2. 파일 읽기 시도 (깨졌으면 자동 삭제 후 재생성 - 이게 핵심!)
     try:
         with open(DATA_FILE, "r", encoding='utf-8') as f:
             data = json.load(f)
-            # 데이터 검증 (필수 키 확인)
-            if 'players' not in data or len(data['players']) != 9: raise ValueError("Data Corrupted")
+            if 'players' not in data: raise ValueError
             return data
-    except Exception as e:
-        # 에러 나면 파일 삭제하고 재설정 (무한 튕김 방지)
+    except:
         if os.path.exists(DATA_FILE): os.remove(DATA_FILE)
         d = init_game_data(); save_data(d); return d
 
@@ -79,7 +73,7 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding='utf-8') as f: json.dump(data, f)
 
 # ==========================================
-# 3. 족보 및 봇 로직 (형님 원판)
+# 3. 족보 및 봇 로직
 # ==========================================
 def make_card(card):
     if not card or len(card) < 2: return "🂠"
@@ -87,7 +81,6 @@ def make_card(card):
     return f"<span class='card-span' style='color:{color}'>{card}</span>"
 
 def get_bot_decision(player, data):
-    # 간단한 봇: 랜덤 액션 (형님 테스트용)
     roll = random.random()
     to_call = data['current_bet'] - player['bet']
     if to_call == 0: return "Check", 0
@@ -96,41 +89,55 @@ def get_bot_decision(player, data):
     return "Raise", to_call + data['bb'] * 2
 
 # ==========================================
-# 4. 메인 실행 (로그인 깜빡임 방지 게이트)
+# 4. 메인 실행 (재접속 기능 탑재)
 # ==========================================
 if 'my_seat' not in st.session_state:
-    st.title("🦁 AI 몬스터 토너먼트 - FIX")
+    st.title("🦁 AI 몬스터 토너먼트 - Reconnect")
     u_name = st.text_input("닉네임 입력", value="형님")
     
     col1, col2 = st.columns(2)
-    if col1.button("입장하기 (봇 뺏기)", type="primary", use_container_width=True):
+    if col1.button("입장하기 (이어하기 가능)", type="primary", use_container_width=True):
         data = load_data()
-        # 4번 자리(Hero)부터 뺏기
-        target = 4
-        if data['players'][4]['is_human']: # 4번이 사람이면 빈자리 찾기
-            for i in range(9):
-                if not data['players'][i]['is_human']: target = i; break
         
-        data['players'][target]['name'] = u_name
-        data['players'][target]['is_human'] = True
-        data['players'][target]['status'] = 'alive'
-        save_data(data)
-        st.session_state['my_seat'] = target
-        st.rerun()
+        # [핵심] 이미 있는 닉네임인지 확인 (재접속 로직)
+        found_seat = -1
+        for i, p in enumerate(data['players']):
+            if p['is_human'] and p['name'] == u_name:
+                found_seat = i
+                break
+        
+        if found_seat != -1:
+            # 기존 자리 찾음 -> 바로 복구
+            st.session_state['my_seat'] = found_seat
+            st.success(f"👋 {u_name}님, 원래 자리로 돌아갑니다!")
+            time.sleep(1)
+            st.rerun()
+        else:
+            # 새 유저 -> 4번 자리(Hero)부터 뺏기
+            target = 4
+            if data['players'][4]['is_human']: 
+                for i in range(9):
+                    if not data['players'][i]['is_human']: target = i; break
+            
+            data['players'][target]['name'] = u_name
+            data['players'][target]['is_human'] = True
+            data['players'][target]['status'] = 'alive'
+            save_data(data)
+            st.session_state['my_seat'] = target
+            st.rerun()
 
-    if col2.button("⚠️ 서버 초기화 (오류 해결용)", use_container_width=True):
+    if col2.button("⚠️ 서버 초기화", use_container_width=True):
         if os.path.exists(DATA_FILE): os.remove(DATA_FILE)
         st.success("초기화 완료! 다시 입장하세요.")
     
-    # 🚨 [핵심] 로그인 화면에서는 자동 새로고침 절대 금지
     st.stop() 
 
 # ==========================================
-# 5. 게임 화면 (입장 후에만 실행됨)
+# 5. 게임 화면
 # ==========================================
 data = load_data()
 
-# 혹시 데이터 로드 중 내 자리가 사라졌으면(초기화 등) 강제로 로그아웃
+# 데이터 오류 시 강제 로그아웃 (검은 화면 방지)
 if st.session_state['my_seat'] >= len(data['players']):
     del st.session_state['my_seat']
     st.rerun()
@@ -140,9 +147,8 @@ me = data['players'][my_seat]
 curr_idx = data['turn_idx']
 curr_p = data['players'][curr_idx]
 
-# [자동 진행 로직]
+# 자동 진행 로직
 if curr_idx != my_seat:
-    # 봇 차례면 진행
     if not curr_p['is_human']:
         time.sleep(1)
         act, amt = get_bot_decision(curr_p, data)
@@ -154,11 +160,11 @@ if curr_idx != my_seat:
         save_data(data)
         st.rerun()
     else:
-        # 다른 사람 차례면 2초마다 갱신 (여기서만 깜빡임 발생)
+        # 다른 사람 턴일 때만 리프레시
         time.sleep(2)
         st.rerun()
 
-# HUD & 타이머
+# HUD
 elapsed = time.time() - data['start_time']
 lvl = min(len(BLIND_STRUCTURE), int(elapsed // LEVEL_DURATION) + 1)
 sb, bb, ante = BLIND_STRUCTURE[lvl-1]
@@ -168,7 +174,6 @@ st.markdown(f'<div class="top-hud"><div>LEVEL {lvl}</div><div class="hud-time">�
 
 col_table, col_controls = st.columns([3, 1])
 
-# 테이블 그리기
 with col_table:
     html = '<div class="game-board-container"><div class="poker-table"></div>'
     comm_str = "".join([make_card(c) for c in data['community']])
@@ -178,18 +183,19 @@ with col_table:
         active = "active-turn" if i == data['turn_idx'] else ""
         hero = "hero-seat" if i == my_seat else ""
         
+        # 내 카드만 보임
         if i == my_seat:
             cards = f"<div style='margin-top:5px;'>{make_card(p['hand'][0])}{make_card(p['hand'][1])}</div>"
         else:
             cards = "<div style='margin-top:10px; font-size:24px;'>🂠 🂠</div>"
-        
+            
         role = f"<div class='role-badge role-{p['role']}'>{p['role']}</div>" if p['role'] else ""
         html += f'<div class="seat pos-{i} {active} {hero}">{role}<div><b>{p["name"]}</b></div><div>🪙 {int(p["stack"]):,}</div>{cards}<div class="action-badge">{p["action"]}</div></div>'
     
     html += f'<div style="position:absolute; top:45%; left:50%; transform:translate(-50%,-50%); text-align:center; color:white;"><h2>Pot: {data["pot"]:,}</h2><div>{comm_str}</div></div></div>'
     st.markdown(html, unsafe_allow_html=True)
 
-# 컨트롤러 (형님 원판 100% 복구)
+# 형님 원판 컨트롤러
 with col_controls:
     st.markdown("### 🎮 Control")
     if curr_idx == my_seat:
@@ -227,7 +233,7 @@ with col_controls:
             save_data(data); st.rerun()
     else:
         st.info(f"⏳ {curr_p['name']} 턴...")
-        # 딜러 강제 진행 버튼 (버그 시 탈출용)
+        # 딜러 강제 진행 버튼
         if st.button("딜러 카드 깔기 (강제)", use_container_width=True):
             if data['phase'] == 'PREFLOP': data['phase']='FLOP'; data['community']=[data['deck'].pop() for _ in range(3)]
             elif data['phase'] == 'FLOP': data['phase']='TURN'; data['community'].append(data['deck'].pop())
