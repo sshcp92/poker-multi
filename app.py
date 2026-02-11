@@ -16,9 +16,7 @@ BLIND_STRUCTURE = [
 LEVEL_DURATION = 600
 RANKS = '23456789TJQKA'
 SUITS = ['♠', '♥', '♦', '♣']
-DISPLAY_MAP = {'T': '10', 'J': 'J', 'Q': 'Q', 'K': 'K', 'A': 'A'}
 
-# [형님 원판 CSS 100% 복사]
 st.markdown("""<style>
 .stApp {background-color:#121212;}
 .top-hud { display: flex; justify-content: space-around; align-items: center; background: #333; padding: 10px; border-radius: 10px; margin-bottom: 5px; border: 1px solid #555; color: white; font-weight: bold; font-size: 16px; }
@@ -36,7 +34,7 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 
 # ==========================================
-# 2. 멀티플레이어 통신 엔진 (CSV 연동)
+# 2. 데이터베이스 연동 엔진 (멀티플레이 핵심)
 # ==========================================
 DB_FILE = "poker_db.csv"
 STATE_FILE = "state.txt"
@@ -49,18 +47,16 @@ def init_game():
     pd.DataFrame(players).to_csv(DB_FILE, index=False)
     with open(STATE_FILE, "w", encoding='utf-8') as f:
         comm = ",".join([deck.pop() for _ in range(5)])
-        f.write(f"0|200|0|PREFLOP|{comm}|0|게임을 시작하려면 입장하세요!|100|200|0|0|1|{time.time()}")
-    st.session_state.clear()
+        f.write(f"0|200|0|PREFLOP|{comm}|0|친구들을 기다리고 있습니다!|100|200|0|0|1|{time.time()}")
+    if 'my_seat' in st.session_state: del st.session_state['my_seat']
 
 def load_data():
-    try:
-        df = pd.read_csv(DB_FILE).fillna('')
-        with open(STATE_FILE, "r", encoding='utf-8') as f:
-            s = f.read().split('|')
-            state = {'pot':int(s[0]), 'cur_bet':int(s[1]), 'turn':int(s[2]), 'phase':s[3], 'comm':s[4], 'open':int(s[5]), 'msg':s[6], 'sb':s[7], 'bb':s[8], 'ante':s[9], 'dealer_idx':int(s[10]), 'level':int(s[11]), 'start_time':float(s[12])}
-        return df, state
-    except:
-        init_game(); return load_data()
+    if not os.path.exists(DB_FILE): init_game()
+    df = pd.read_csv(DB_FILE).fillna('')
+    with open(STATE_FILE, "r", encoding='utf-8') as f:
+        s = f.read().split('|')
+        state = {'pot':int(s[0]), 'cur_bet':int(s[1]), 'turn':int(s[2]), 'phase':s[3], 'comm':s[4], 'open':int(s[5]), 'msg':s[6], 'sb':s[7], 'bb':s[8], 'ante':s[9], 'dealer_idx':int(s[10]), 'level':int(s[11]), 'start_time':float(s[12])}
+    return df, state
 
 def save_data(df, state):
     df.to_csv(DB_FILE, index=False)
@@ -73,11 +69,11 @@ def make_card(card):
     return f"<span class='card-span' style='color:{color}'>{card}</span>"
 
 # ==========================================
-# 3. 메인 로직 및 렌더링 (형님 원판 그대로)
+# 3. 메인 게임 로직 (형님 원판 FIX)
 # ==========================================
 df, state = load_data()
 
-# 블라인드 및 타이머 로직 (형님 원판)
+# 블라인드 타이머 로직 (형님 원판)
 elapsed = time.time() - state['start_time']
 lvl_idx = int(elapsed // LEVEL_DURATION)
 if lvl_idx < len(BLIND_STRUCTURE):
@@ -87,38 +83,45 @@ if lvl_idx < len(BLIND_STRUCTURE):
 else:
     timer_str = "MAX"
 
-# [입장 화면]
+# [입장 로직 - 빤짝임 방지 강화]
 if 'my_seat' not in st.session_state:
     st.title("🦁 몬스터 토너먼트 - 멀티")
-    u_name = st.text_input("닉네임 입력", key="user_login_name")
-    col1, col2 = st.columns(2)
-    if col1.button("랜덤 빈자리 입장하기", type="primary"):
-        empty_seats = df[df['is_joined'] == False].index.tolist()
-        if u_name and empty_seats:
-            idx = random.choice(empty_seats)
-            df.at[idx, 'name'], df.at[idx, 'is_joined'], df.at[idx, 'status'] = u_name, True, 'alive'
-            # 역할 배정
-            count = df['is_joined'].sum()
-            if count == 1: df.at[idx, 'role'] = 'D'
-            elif count == 2: df.at[idx, 'role'] = 'SB'
-            elif count == 3: df.at[idx, 'role'] = 'BB'
-            save_data(df, state); st.session_state['my_seat'] = idx; st.rerun()
-    if col2.button("🆘 서버 초기화"):
+    u_name = st.text_input("닉네임 입력", key="user_input_fix")
+    c1, c2 = st.columns(2)
+    if c1.button("랜덤 빈자리 입장하기", type="primary", use_container_width=True):
+        if u_name:
+            empty_seats = df[df['is_joined'] == False].index.tolist()
+            if empty_seats:
+                idx = random.choice(empty_seats)
+                df.at[idx, 'name'], df.at[idx, 'is_joined'], df.at[idx, 'status'] = u_name, True, 'alive'
+                # 역할 자동 배정 (D, SB, BB)
+                count = df['is_joined'].sum()
+                if count == 1: df.at[idx, 'role'] = 'D'
+                elif count == 2: df.at[idx, 'role'] = 'SB'
+                elif count == 3: df.at[idx, 'role'] = 'BB'
+                save_data(df, state)
+                st.session_state['my_seat'] = idx
+                st.rerun()
+            else:
+                st.warning("자리가 없습니다. 초기화를 눌러주세요!")
+    if c2.button("🆘 서버 초기화", use_container_width=True):
         init_game(); st.rerun()
     st.stop()
 
 # [메인 게임 화면]
 my_idx = st.session_state['my_seat']
-# 내 차례 아니면 자동 갱신 (빤짝임 방지 위해 3초)
-if state['turn'] != my_idx and state['phase'] != 'SHOWDOWN':
-    time.sleep(3); st.rerun()
 
-# 상단 HUD 렌더링
+# 🚨 핵심: 내 턴이 아닐 때만 3초마다 자동 갱신 (입장 중엔 멈춤)
+if state['turn'] != my_idx and state['phase'] != 'SHOWDOWN':
+    time.sleep(3)
+    st.rerun()
+
 st.markdown(f'<div class="top-hud"><div>LEVEL {state["level"]}</div><div class="hud-time">⏱️ {timer_str}</div><div>🟡 {state["sb"]}/{state["bb"]} (A{state["ante"]})</div><div>📊 Avg: 60,000</div></div>', unsafe_allow_html=True)
 
 col_table, col_controls = st.columns([3, 1])
 
 with col_table:
+    # 포커 테이블 UI (형님 원판 그대로 렌더링)
     html_code = '<div class="game-board-container"><div class="poker-table"></div>'
     comm_list = state['comm'].split(',')
     display_comm = "".join([make_card(c) for c in comm_list[:state['open']]])
@@ -162,9 +165,9 @@ with col_controls:
         
         if st.button("➡️ 다음 단계 (딜러)", type="primary", use_container_width=True):
             state['open'] = 3 if state['open'] == 0 else min(5, state['open'] + 1)
-            if state['open'] == 5: state['phase'] = 'SHOWDOWN'
             save_data(df, state); st.rerun()
     else:
         st.info("다른 플레이어 대기 중...")
     
-    if st.sidebar.button("💾 전체 리셋"): init_game(); st.rerun()
+    if st.sidebar.button("💾 전체 리셋"):
+        init_game(); st.rerun()
