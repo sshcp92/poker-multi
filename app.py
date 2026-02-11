@@ -5,9 +5,9 @@ import time
 import os
 
 # ==========================================
-# 1. 형님 원판 디자인 및 설정 (절대 고정)
+# 1. 설정 및 디자인 (형님 원판 그대로 100% 고정)
 # ==========================================
-st.set_page_config(layout="wide", page_title="AI 몬스터 토너먼트", page_icon="🦁")
+st.set_page_config(layout="wide", page_title="AI 몬스터 토너먼트 - 멀티", page_icon="🦁")
 
 BLIND_STRUCTURE = [
     (100, 200, 0), (200, 400, 0), (300, 600, 600), (400, 800, 800),
@@ -16,6 +16,7 @@ BLIND_STRUCTURE = [
 LEVEL_DURATION = 600
 RANKS = '23456789TJQKA'
 SUITS = ['♠', '♥', '♦', '♣']
+DISPLAY_MAP = {'T': '10', 'J': 'J', 'Q': 'Q', 'K': 'K', 'A': 'A'}
 
 st.markdown("""<style>
 .stApp {background-color:#121212;}
@@ -23,9 +24,9 @@ st.markdown("""<style>
 .hud-time { color: #ffeb3b; font-size: 20px; }
 .game-board-container { position:relative; width:100%; height:650px; margin:0 auto; background-color:#1e1e1e; border-radius:30px; border:4px solid #333; overflow: hidden; }
 .poker-table { position:absolute; top:45%; left:50%; transform:translate(-50%,-50%); width: 90%; height: 460px; background: radial-gradient(#5d4037, #3e2723); border: 20px solid #281915; border-radius: 250px; box-shadow: inset 0 0 50px rgba(0,0,0,0.8); }
-.seat { position:absolute; width:140px; height:160px; background:#2c2c2c; border:3px solid #666; border-radius:15px; color:white; text-align:center; display:flex; flex-direction:column; justify-content:flex-start; padding-top: 10px; align-items:center; z-index:10; }
+.seat { position:absolute; width:140px; height:160px; background:#2c2c2c; border:3px solid #666; border-radius:15px; color:white; text-align:center; font-size:12px; display:flex; flex-direction:column; justify-content:flex-start; padding-top: 10px; align-items:center; z-index:10; }
 .pos-0 {top:30px; right:25%;} .pos-1 {top:110px; right:5%;} .pos-2 {bottom:110px; right:5%;} .pos-3 {bottom:30px; right:25%;} .pos-4 {bottom:30px; left:50%; transform:translateX(-50%);} .pos-5 {bottom:30px; left:25%;} .pos-6 {bottom:110px; left:5%;} .pos-7 {top:110px; left:5%;} .pos-8 {top:30px; left:25%;}
-.hero-seat { border:4px solid #ffd700; background:#3a3a3a; box-shadow:0 0 25px #ffd700; z-index: 20; }
+.hero-seat { border:4px solid #ffd700; background:#3a3a3a; box-shadow:0 0 25px #ffd700; z-index: 20; transform: translateX(-50%) scale(1.1); }
 .active-turn { border:4px solid #ffeb3b !important; box-shadow: 0 0 15px #ffeb3b; }
 .card-span {background:white; padding:2px 6px; border-radius:4px; margin:1px; font-weight:bold; font-size:26px; color:black; border:1px solid #ccc; line-height: 1.0;}
 .role-badge { position: absolute; top: -10px; left: -10px; width: 30px; height: 30px; border-radius: 50%; color: black; font-weight: bold; line-height: 26px; border: 2px solid #333; z-index: 100; font-size: 14px; }
@@ -34,7 +35,7 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 
 # ==========================================
-# 2. 데이터베이스 연동 엔진 (멀티플레이 핵심)
+# 2. 멀티플레이 데이터 통신 엔진
 # ==========================================
 DB_FILE = "poker_db.csv"
 STATE_FILE = "state.txt"
@@ -43,37 +44,74 @@ def init_game():
     deck = [r+s for r in RANKS for s in SUITS]; random.shuffle(deck)
     players = []
     for i in range(9):
-        players.append({'name': 'Empty', 'seat': i+1, 'stack': 60000, 'hand': f"{deck.pop()},{deck.pop()}", 'bet': 0, 'status': 'waiting', 'action': '', 'is_joined': False, 'role': '', 'buyin': 1})
+        players.append({'name': 'Empty', 'seat': i+1, 'stack': 60000, 'hand': f"{deck.pop()},{deck.pop()}", 'bet': 0, 'status': 'waiting', 'action': '', 'is_joined': False, 'role': '', 'buyin': 1, 'total_bet': 0})
     pd.DataFrame(players).to_csv(DB_FILE, index=False)
     with open(STATE_FILE, "w", encoding='utf-8') as f:
         comm = ",".join([deck.pop() for _ in range(5)])
+        # pot|cur_bet|turn|phase|comm|open|msg|sb|bb|ante|dealer|level|start_time
         f.write(f"0|200|0|PREFLOP|{comm}|0|친구들을 기다리고 있습니다!|100|200|0|0|1|{time.time()}")
-    if 'my_seat' in st.session_state: del st.session_state['my_seat']
+    st.session_state.clear()
 
 def load_data():
-    if not os.path.exists(DB_FILE): init_game()
-    df = pd.read_csv(DB_FILE).fillna('')
-    with open(STATE_FILE, "r", encoding='utf-8') as f:
-        s = f.read().split('|')
-        state = {'pot':int(s[0]), 'cur_bet':int(s[1]), 'turn':int(s[2]), 'phase':s[3], 'comm':s[4], 'open':int(s[5]), 'msg':s[6], 'sb':s[7], 'bb':s[8], 'ante':s[9], 'dealer_idx':int(s[10]), 'level':int(s[11]), 'start_time':float(s[12])}
-    return df, state
+    try:
+        df = pd.read_csv(DB_FILE).fillna({'name': 'Empty', 'action': '', 'role': '', 'is_joined': False})
+        with open(STATE_FILE, "r", encoding='utf-8') as f:
+            s = f.read().split('|')
+            state = {'pot':int(s[0]), 'cur_bet':int(s[1]), 'turn':int(s[2]), 'phase':s[3], 'comm':s[4], 'open':int(s[5]), 'msg':s[6], 'sb':int(s[7]), 'bb':int(s[8]), 'ante':int(s[9]), 'dealer_idx':int(s[10]), 'level':int(s[11]), 'start_time':float(s[12])}
+        return df, state
+    except:
+        init_game(); return load_data()
 
 def save_data(df, state):
     df.to_csv(DB_FILE, index=False)
     with open(STATE_FILE, "w", encoding='utf-8') as f:
         f.write(f"{state['pot']}|{state['cur_bet']}|{state['turn']}|{state['phase']}|{state['comm']}|{state['open']}|{state['msg']}|{state['sb']}|{state['bb']}|{state['ante']}|{state['dealer_idx']}|{state['level']}|{state['start_time']}")
 
+# ==========================================
+# 3. 형님 원판 유틸리티 (족보 판독 등 완벽 복사)
+# ==========================================
+def r_str(rank_idx): return DISPLAY_MAP.get(RANKS[rank_idx], RANKS[rank_idx])
+
 def make_card(card):
     if not card or card == 'nan' or len(card) < 2: return "🂠"
     color = "red" if card[1] in ['♥', '♦'] else "black"
     return f"<span class='card-span' style='color:{color}'>{card}</span>"
 
+def get_hand_strength(hand):
+    if not hand: return (-1, [])
+    ranks = sorted([RANKS.index(c[0]) for c in hand], reverse=True)
+    suits = [c[1] for c in hand]
+    suit_counts = {s: suits.count(s) for s in set(suits)}
+    flush_suit = next((s for s, c in suit_counts.items() if c >= 5), None)
+    is_flush = (flush_suit is not None)
+    unique_ranks = sorted(list(set(ranks)), reverse=True)
+    is_straight = False; straight_high = -1
+    for i in range(len(unique_ranks) - 4):
+        if unique_ranks[i] - unique_ranks[i+4] == 4:
+            is_straight = True; straight_high = unique_ranks[i]; break
+    if not is_straight and set([12, 3, 2, 1, 0]).issubset(set(ranks)):
+        is_straight = True; straight_high = 3
+    counts = {r: ranks.count(r) for r in ranks}
+    sorted_groups = sorted([(c, r) for r, c in counts.items()], reverse=True)
+    if is_flush and is_straight:
+        return (8, [straight_high], "스트레이트 플러시")
+    if sorted_groups[0][0] == 4:
+        return (7, [sorted_groups[0][1]], "포카드")
+    if sorted_groups[0][0] == 3 and sorted_groups[1][0] >= 2:
+        return (6, [sorted_groups[0][1]], "풀하우스")
+    if is_flush: return (5, ranks[:5], "플러시")
+    if is_straight: return (4, [straight_high], "스트레이트")
+    if sorted_groups[0][0] == 3: return (3, [sorted_groups[0][1]], "트리플")
+    if sorted_groups[0][0] == 2 and sorted_groups[1][0] == 2: return (2, [sorted_groups[0][1], sorted_groups[1][1]], "투페어")
+    if sorted_groups[0][0] == 2: return (1, [sorted_groups[0][1]], "원페어")
+    return (0, ranks[:5], "하이카드")
+
 # ==========================================
-# 3. 메인 게임 로직 (형님 원판 FIX)
+# 4. 메인 실행 및 UI
 # ==========================================
 df, state = load_data()
 
-# 블라인드 타이머 로직 (형님 원판)
+# 타이머 및 블라인드 업 (형님 원판)
 elapsed = time.time() - state['start_time']
 lvl_idx = int(elapsed // LEVEL_DURATION)
 if lvl_idx < len(BLIND_STRUCTURE):
@@ -83,45 +121,33 @@ if lvl_idx < len(BLIND_STRUCTURE):
 else:
     timer_str = "MAX"
 
-# [입장 로직 - 빤짝임 방지 강화]
+# 입장 화면 (모바일 빤짝임 방지)
 if 'my_seat' not in st.session_state:
     st.title("🦁 몬스터 토너먼트 - 멀티")
-    u_name = st.text_input("닉네임 입력", key="user_input_fix")
+    u_name = st.text_input("닉네임 입력", value="👑 형님")
     c1, c2 = st.columns(2)
-    if c1.button("랜덤 빈자리 입장하기", type="primary", use_container_width=True):
-        if u_name:
-            empty_seats = df[df['is_joined'] == False].index.tolist()
-            if empty_seats:
-                idx = random.choice(empty_seats)
-                df.at[idx, 'name'], df.at[idx, 'is_joined'], df.at[idx, 'status'] = u_name, True, 'alive'
-                # 역할 자동 배정 (D, SB, BB)
-                count = df['is_joined'].sum()
-                if count == 1: df.at[idx, 'role'] = 'D'
-                elif count == 2: df.at[idx, 'role'] = 'SB'
-                elif count == 3: df.at[idx, 'role'] = 'BB'
-                save_data(df, state)
-                st.session_state['my_seat'] = idx
-                st.rerun()
-            else:
-                st.warning("자리가 없습니다. 초기화를 눌러주세요!")
-    if c2.button("🆘 서버 초기화", use_container_width=True):
+    if c1.button("랜덤 빈자리 입장", type="primary", use_container_width=True):
+        empty = df[df['is_joined'] == False].index.tolist()
+        if u_name and empty:
+            idx = random.choice(empty)
+            df.at[idx, 'name'], df.at[idx, 'is_joined'], df.at[idx, 'status'] = u_name, True, 'alive'
+            # 딜러 버튼 자동 배정
+            if df['is_joined'].sum() == 1: df.at[idx, 'role'] = 'D'
+            save_data(df, state); st.session_state['my_seat'] = idx; st.rerun()
+    if c2.button("🆘 서버 리셋", use_container_width=True):
         init_game(); st.rerun()
     st.stop()
 
-# [메인 게임 화면]
+# 게임 화면
 my_idx = st.session_state['my_seat']
-
-# 🚨 핵심: 내 턴이 아닐 때만 3초마다 자동 갱신 (입장 중엔 멈춤)
 if state['turn'] != my_idx and state['phase'] != 'SHOWDOWN':
-    time.sleep(3)
-    st.rerun()
+    time.sleep(3); st.rerun()
 
 st.markdown(f'<div class="top-hud"><div>LEVEL {state["level"]}</div><div class="hud-time">⏱️ {timer_str}</div><div>🟡 {state["sb"]}/{state["bb"]} (A{state["ante"]})</div><div>📊 Avg: 60,000</div></div>', unsafe_allow_html=True)
 
 col_table, col_controls = st.columns([3, 1])
 
 with col_table:
-    # 포커 테이블 UI (형님 원판 그대로 렌더링)
     html_code = '<div class="game-board-container"><div class="poker-table"></div>'
     comm_list = state['comm'].split(',')
     display_comm = "".join([make_card(c) for c in comm_list[:state['open']]])
@@ -146,14 +172,14 @@ with col_table:
 with col_controls:
     st.markdown("### 🎮 Control Panel")
     if state['turn'] == my_idx:
-        st.success("📢 당신의 차례입니다!")
+        st.success("📢 당신의 차례!")
         to_call = int(state['cur_bet']) - int(df.at[my_idx, 'bet'])
         if st.button(f"✅ 콜/체크 ({to_call:,})", use_container_width=True):
             df.at[my_idx, 'stack'] -= to_call; df.at[my_idx, 'bet'] += to_call; state['pot'] += to_call
             df.at[my_idx, 'action'] = "Call" if to_call > 0 else "Check"
             state['turn'] = (state['turn'] + 1) % 9; save_data(df, state); st.rerun()
         
-        raise_val = st.number_input("Raise Amt", min_value=int(state['cur_bet']*2), step=100)
+        raise_val = st.number_input("Raise Amount", min_value=int(state['cur_bet']*2), value=int(state['cur_bet']*2), step=100)
         if st.button("🚀 레이즈", use_container_width=True):
             added = raise_val - df.at[my_idx, 'bet']
             df.at[my_idx, 'stack'] -= added; df.at[my_idx, 'bet'] = raise_val; state['pot'] += added
@@ -163,11 +189,10 @@ with col_controls:
         if st.button("❌ 폴드", use_container_width=True):
             df.at[my_idx, 'action'] = "Fold"; state['turn'] = (state['turn'] + 1) % 9; save_data(df, state); st.rerun()
         
-        if st.button("➡️ 다음 단계 (딜러)", type="primary", use_container_width=True):
+        if st.button("➡️ 다음 카드 (딜러전용)", type="primary", use_container_width=True):
             state['open'] = 3 if state['open'] == 0 else min(5, state['open'] + 1)
             save_data(df, state); st.rerun()
     else:
         st.info("다른 플레이어 대기 중...")
     
-    if st.sidebar.button("💾 전체 리셋"):
-        init_game(); st.rerun()
+    if st.sidebar.button("💾 전체 리셋"): init_game(); st.rerun()
