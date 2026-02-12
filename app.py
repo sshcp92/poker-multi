@@ -59,7 +59,7 @@ div[data-baseweb="input"] input { text-align: center; font-weight: bold; }
 # ==========================================
 # 2. 데이터 엔진
 # ==========================================
-DATA_FILE = "poker_final_v14.json"
+DATA_FILE = "poker_final_v15.json"
 
 def init_game_data():
     deck = [r+s for r in RANKS for s in SUITS]; random.shuffle(deck)
@@ -137,12 +137,18 @@ def reset_for_next_hand(old_data):
         players[new_dealer_idx]['role'] = 'D'; players[sb_idx]['role'] = 'SB'; players[bb_idx]['role'] = 'BB'
         turn_start_idx = find_next_active(bb_idx)
 
+    # [수정-핵심] 블라인드를 냈어도 has_acted = False로 두어 옵션 보장
     if players[sb_idx]['status'] == 'alive':
         pay = min(players[sb_idx]['stack'], sb_amt)
-        players[sb_idx]['stack'] -= pay; players[sb_idx]['bet'] = pay; players[sb_idx]['has_acted'] = False; current_pot += pay
+        players[sb_idx]['stack'] -= pay; players[sb_idx]['bet'] = pay; 
+        players[sb_idx]['has_acted'] = False; # SB도 림프 시 결정권 있음
+        current_pot += pay
+        
     if players[bb_idx]['status'] == 'alive':
         pay = min(players[bb_idx]['stack'], bb_amt)
-        players[bb_idx]['stack'] -= pay; players[bb_idx]['bet'] = pay; players[bb_idx]['has_acted'] = False; current_pot += pay
+        players[bb_idx]['stack'] -= pay; players[bb_idx]['bet'] = pay; 
+        players[bb_idx]['has_acted'] = False; # BB 옵션 필수 (체크/레이즈)
+        current_pot += pay
 
     return {
         'players': players, 'pot': current_pot, 'deck': deck, 'community': [],
@@ -287,30 +293,17 @@ def check_disconnection(data):
     
     for i, p in enumerate(data['players']):
         if p['name'] != "빈 자리" and (now - p.get('last_active', now)) > DISCONNECT_TIMEOUT:
-            # 15초 이상 잠수
             if p['status'] == 'alive':
-                # 게임 중 탈주: 스택 소멸, 폴드 처리
-                p['stack'] = 0 
-                p['status'] = 'folded'
-                p['action'] = '탈주(칩 소멸)'
-                p['has_acted'] = True
-                
-                # 만약 이 사람이 턴을 잡고 있었다면 턴을 넘겨야 함
-                if i == data['turn_idx']:
-                    turn_changed = True
-            
-            # 자리 비우기
+                p['stack'] = 0; p['status'] = 'folded'; p['action'] = '탈주(칩 소멸)'; p['has_acted'] = True
+                if i == data['turn_idx']: turn_changed = True
             p['name'] = "빈 자리"; p['hand'] = []; p['is_human'] = False; p['role'] = ''
             changed = True
     
-    if turn_changed:
-        pass_turn(data)
+    if turn_changed: pass_turn(data)
     
-    # 생존자가 2명 미만이면 대기 상태로 전환
     active_count = len([p for p in data['players'] if p['name'] != "빈 자리"])
     if active_count < 2 and data['phase'] != 'WAITING':
-        data['phase'] = 'WAITING'; data['msg'] = "플레이어 퇴장으로 게임 중단. 대기 중..."
-        changed = True
+        data['phase'] = 'WAITING'; data['msg'] = "플레이어 퇴장으로 게임 중단. 대기 중..."; changed = True
         
     return changed
 
@@ -359,7 +352,6 @@ if 'my_seat' not in st.session_state:
 data = load_data()
 my_seat = st.session_state.get('my_seat', -1)
 
-# 하트비트: 생존 신고
 if my_seat != -1:
     if data['players'][my_seat]['name'] == st.session_state.get('my_name'):
         data['players'][my_seat]['last_active'] = time.time()
@@ -369,9 +361,7 @@ if my_seat != -1:
         st.error("연결이 끊겼거나 자리를 뺏겼습니다.")
         time.sleep(2); st.rerun()
 
-# 주기적 청소 (탈주자 처리 포함)
-if check_disconnection(data):
-    save_data(data); st.rerun()
+if check_disconnection(data): save_data(data); st.rerun()
 
 me = data['players'][my_seat]
 curr_idx = data['turn_idx']; curr_p = data['players'][curr_idx]
@@ -434,9 +424,12 @@ with col_controls:
         if curr_idx == my_seat and me['status'] == 'alive':
             st.success(f"내 차례! ({int(time_left)}초)"); to_call = data['current_bet'] - me['bet']
             c1, c2 = st.columns(2)
-            check_label = "체크/콜"
-            if data['phase'] == 'PREFLOP' and to_call == 0 and ('BB' in me['role'] or 'SB' in me['role']): check_label = "체크 (옵션)"
             
+            # [수정] 옵션 UI 표시
+            check_label = "체크/콜"
+            if data['phase'] == 'PREFLOP' and to_call == 0 and ('BB' in me['role'] or 'SB' in me['role']):
+                check_label = "체크 (옵션)"
+                
             if c1.button(check_label, use_container_width=True):
                 data = load_data(); me = data['players'][my_seat]; pay = min(to_call, me['stack']); me['stack'] -= pay; me['bet'] += pay; data['pot'] += pay; me['has_acted'] = True; me['action'] = "체크" if pay == 0 else "콜"
                 if not check_phase_end(data): pass_turn(data)
