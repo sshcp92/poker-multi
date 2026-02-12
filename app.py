@@ -6,10 +6,11 @@ import json
 import shutil
 
 # ==========================================
-# 1. 설정 & 디자인 (모바일 최적화 고정)
+# 1. 설정 & 디자인 (모바일 최적화)
 # ==========================================
 st.set_page_config(layout="wide", page_title="AI 몬스터 토너먼트 - FINAL", page_icon="🦁")
 
+# [수정7] 블라인드 구조 수정 (앤티 = BB)
 BLIND_STRUCTURE = [
     (100, 200, 0), 
     (200, 400, 0), 
@@ -22,7 +23,7 @@ BLIND_STRUCTURE = [
 ]
 LEVEL_DURATION = 600
 TURN_TIMEOUT = 30 
-AUTO_NEXT_HAND_DELAY = 10 
+AUTO_NEXT_HAND_DELAY = 10 # [수정2] 10초 자동 시작
 
 RANKS = '23456789TJQKA'
 SUITS = ['♠', '♥', '♦', '♣']
@@ -49,32 +50,31 @@ st.markdown("""<style>
 .folded-seat { opacity: 0.4; }
 .turn-timer { position: absolute; top: -20px; width: 100%; text-align: center; color: #ff5252; font-weight: bold; font-size: 12px; }
 .stButton>button { font-size: 14px !important; height: 40px !important; }
+/* [수정6] 레이즈 인풋 스타일 */
 div[data-baseweb="input"] { background-color: #333; color: white; border: 1px solid #555; }
+div[data-baseweb="input"] input { text-align: center; font-weight: bold; }
 </style>""", unsafe_allow_html=True)
 
 # ==========================================
-# 2. 데이터 엔진 (봇 삭제 및 초기화)
+# 2. 데이터 엔진
 # ==========================================
-DATA_FILE = "poker_final_v8_nobot.json"
+DATA_FILE = "poker_final_v9.json"
 
 def init_game_data():
     deck = [r+s for r in RANKS for s in SUITS]; random.shuffle(deck)
     players = []
-    # [수정] 봇 이름 대신 "빈 자리"로 초기화
+    # 봇 없이 빈 자리로 초기화
     for i in range(9):
         players.append({
-            'name': "빈 자리", 'seat': i+1, 
-            'stack': 0, # 스택 0
-            'hand': [], 'bet': 0, 
-            'status': 'standby', # 대기 상태
+            'name': "빈 자리", 'seat': i+1, 'stack': 0, 
+            'hand': [], 'bet': 0, 'status': 'standby', 
             'action': '', 'is_human': False, 'role': '', 'has_acted': False, 'style': 'None',
             'rebuy_count': 0
         })
     
     return {
         'players': players, 'pot': 0, 'deck': deck, 'community': [],
-        'phase': 'WAITING', # 대기 상태로 시작
-        'current_bet': 0, 'turn_idx': 0,
+        'phase': 'WAITING', 'current_bet': 0, 'turn_idx': 0,
         'dealer_idx': 0, 'sb': 100, 'bb': 200, 'ante': 0, 'level': 1, 
         'start_time': time.time(), 'msg': "플레이어를 기다리는 중...", 'turn_start_time': time.time(), 'game_over_time': 0
     }
@@ -95,40 +95,46 @@ def save_data(data):
     except: pass
 
 def reset_for_next_hand(old_data):
-    # 활성 플레이어 확인
-    active_players = [p for p in old_data['players'] if p['stack'] > 0 and p['name'] != "빈 자리"]
-    if len(active_players) < 2:
-        return init_game_data() # 플레이어 부족 시 초기화
+    # [수정3] 딜러 회전 및 게임 준비
+    players = old_data['players']
+    # 활성 플레이어(스택 있는 사람) 확인
+    active_indices = [i for i, p in enumerate(players) if p['name'] != "빈 자리" and p['stack'] > 0]
+    
+    if len(active_indices) < 2:
+        return init_game_data() # 플레이어 부족
 
     deck = [r+s for r in RANKS for s in SUITS]; random.shuffle(deck)
-    new_dealer_idx = (old_data['dealer_idx'] + 1) % 9
     
-    # 딜러 위치에 사람이 없으면 다음 사람으로 이동 (봇이 없으므로 중요)
-    for _ in range(9):
-        p = old_data['players'][new_dealer_idx]
-        if p['stack'] > 0 and p['name'] != "빈 자리": break
-        new_dealer_idx = (new_dealer_idx + 1) % 9
-
-    players = old_data['players']
+    # 1. 딜러 이동 (오른쪽으로 빈 자리 건너뛰며 이동)
+    current_d = old_data['dealer_idx']
+    for i in range(1, 10):
+        next_d = (current_d + i) % 9
+        if players[next_d]['name'] != "빈 자리" and players[next_d]['stack'] > 0:
+            new_dealer_idx = next_d; break
+    
     elapsed = time.time() - old_data['start_time']
     lvl = min(len(BLIND_STRUCTURE), int(elapsed // LEVEL_DURATION) + 1)
     sb_amt, bb_amt, ante_amt = BLIND_STRUCTURE[lvl-1]
     
     current_pot = 0
+    
+    # 2. 플레이어 상태 초기화 및 앤티 징수
     for i, p in enumerate(players):
-        if p['name'] == "빈 자리" or p['stack'] == 0:
-            p['status'] = 'standby'; p['hand'] = []
-        else:
+        if p['name'] != "빈 자리" and p['stack'] > 0:
             p['status'] = 'alive'; p['hand'] = [deck.pop(), deck.pop()]
-        
+            
+            # 앤티 (본인 스택 한도 내)
+            if ante_amt > 0:
+                actual_ante = min(p['stack'], ante_amt)
+                p['stack'] -= actual_ante
+                current_pot += actual_ante
+        else:
+            p['status'] = 'standby' if p['stack'] == 0 and p['name'] != "빈 자리" else 'folded'
+            p['hand'] = []
+            
         p['bet'] = 0; p['action'] = ''; p['has_acted'] = False; p['role'] = ''
-        
-        if p['status'] == 'alive' and ante_amt > 0:
-            actual_ante = min(p['stack'], ante_amt)
-            p['stack'] -= actual_ante
-            current_pot += actual_ante
 
-    # SB/BB 찾기 (딜러 다음 활성 플레이어)
+    # 3. SB / BB 찾기
     def find_next_active(idx):
         for i in range(1, 10):
             next_i = (idx + i) % 9
@@ -141,6 +147,7 @@ def reset_for_next_hand(old_data):
     players[new_dealer_idx]['role'] = 'D'
     players[sb_idx]['role'] = 'SB'; players[bb_idx]['role'] = 'BB'
     
+    # 4. 블라인드 베팅
     if players[sb_idx]['status'] == 'alive':
         pay = min(players[sb_idx]['stack'], sb_amt)
         players[sb_idx]['stack'] -= pay; players[sb_idx]['bet'] = pay; players[sb_idx]['has_acted'] = True; current_pot += pay
@@ -152,7 +159,8 @@ def reset_for_next_hand(old_data):
         'players': players, 'pot': current_pot, 'deck': deck, 'community': [],
         'phase': 'PREFLOP', 'current_bet': bb_amt, 'turn_idx': find_next_active(bb_idx),
         'dealer_idx': new_dealer_idx, 'sb': sb_amt, 'bb': bb_amt, 'ante': ante_amt, 'level': lvl,
-        'start_time': old_data['start_time'], 'msg': f"새 게임 시작! (Level {lvl})", 'turn_start_time': time.time(), 'game_over_time': 0
+        'start_time': old_data['start_time'], 'msg': f"Level {lvl} 시작! (SB {sb_amt}/BB {bb_amt})", 
+        'turn_start_time': time.time(), 'game_over_time': 0
     }
 
 # ==========================================
@@ -188,11 +196,15 @@ def get_hand_strength_detail(hand):
     if grp[0][0]==2: return (1, ranks, "원페어")
     return (0, ranks, "하이카드")
 
+def get_bot_decision(player, data):
+    return "Check", 0 # 봇 삭제로 미사용, 안전장치용
+
 # ==========================================
 # 4. 페이즈 관리
 # ==========================================
 def check_phase_end(data):
     active = [p for p in data['players'] if p['status'] == 'alive']
+    # 1명 남았을 때
     if len(active) <= 1:
         if len(active) == 1:
             winner = active[0]; winner['stack'] += data['pot']
@@ -224,7 +236,6 @@ def check_phase_end(data):
             p['bet']=0; p['has_acted']=False
             if p['status']=='alive': p['action']=''
         
-        # 다음 턴 찾기 (빈 자리 건너뛰기)
         dealer = data['dealer_idx']
         found = False
         for i in range(1, 10):
@@ -250,7 +261,7 @@ def pass_turn(data):
     data['turn_start_time'] = time.time(); save_data(data)
 
 # ==========================================
-# 5. 입장 처리
+# 5. 입장 처리 (초기화 버튼 복구)
 # ==========================================
 if 'my_seat' not in st.session_state:
     st.title("🦁 AI 몬스터 토너먼트")
@@ -259,7 +270,7 @@ if 'my_seat' not in st.session_state:
     
     if col1.button("입장하기", type="primary"):
         data = load_data(); target = -1
-        # 재접속 확인
+        # 재접속
         for i, p in enumerate(data['players']):
             if p['is_human'] and p['name'] == u_name: target = i; break
         
@@ -272,15 +283,17 @@ if 'my_seat' not in st.session_state:
             
             if target != -1:
                 data = load_data()
+                # [수정1] 중도 입장 시 Folded 처리
                 data['players'][target] = {
-                    'name': u_name, 'seat': target + 1, 'stack': 60000, 
-                    'hand': [data['deck'].pop(), data['deck'].pop()] if data['phase'] == 'PREFLOP' and len(data['community'])==0 else [], 
-                    'bet': 0,
-                    'status': 'alive' if data['phase'] == 'PREFLOP' and len(data['community'])==0 else 'folded',
-                    'action': '입장완료', 'is_human': True, 'role': '', 
-                    'has_acted': False, 'style': 'Hero', 'rebuy_count': 0
+                    'name': u_name, 'seat': target + 1, 
+                    'stack': 60000, # [수정4] 시작 6만
+                    'hand': [], 'bet': 0,
+                    'status': 'folded', # 기본적으로 folded로 입장 (관전)
+                    'action': '관전 대기 중', 'is_human': True, 'role': '', 
+                    'has_acted': True, 'style': 'Hero', 'rebuy_count': 0
                 }
-                # 게임 대기 상태 해제 (2명 이상이면 시작)
+                
+                # 만약 게임이 대기 상태(WAITING)였다면 바로 alive로 전환 시도
                 active_count = len([p for p in data['players'] if p['stack'] > 0 and p['name'] != "빈 자리"])
                 if data['phase'] == 'WAITING' and active_count >= 2:
                     data = reset_for_next_hand(data)
@@ -292,6 +305,7 @@ if 'my_seat' not in st.session_state:
             st.session_state['my_name'] = u_name
             st.rerun()
             
+    # [수정7] 서버 초기화 버튼 복구
     if col2.button("⚠️ 서버 초기화"):
         if os.path.exists(DATA_FILE): os.remove(DATA_FILE)
         st.rerun()
@@ -314,22 +328,17 @@ curr_idx = data['turn_idx']; curr_p = data['players'][curr_idx]
 if data['phase'] == 'WAITING':
     st.info("✋ 다른 플레이어 입장을 대기 중입니다... (최소 2명)")
     if st.button("새로고침"): st.rerun()
-    
-    col_table, _ = st.columns([1, 0.1])
-    with col_table:
-        html = '<div class="game-board-container"><div class="poker-table"></div>'
-        for i in range(9):
-            p = data['players'][i]
-            if p['name'] != "빈 자리":
-                html += f'<div class="seat pos-{i}" style="border:3px solid #ffd700;"><div>{p["name"]}</div><div>대기 중</div></div>'
-            else:
-                html += f'<div class="seat pos-{i}" style="opacity:0.3;"><div>빈 자리</div></div>'
-        html += '</div>'
-        st.markdown(html, unsafe_allow_html=True)
+    html = '<div class="game-board-container"><div class="poker-table"></div>'
+    for i in range(9):
+        p = data['players'][i]
+        txt = p['name'] if p['name'] != "빈 자리" else "빈 자리"
+        style = "border:3px solid #ffd700;" if p['name'] != "빈 자리" else "opacity:0.3;"
+        html += f'<div class="seat pos-{i}" style="{style}"><div>{txt}</div></div>'
+    st.markdown(html + '</div>', unsafe_allow_html=True)
     time.sleep(2); st.rerun()
     st.stop()
 
-# 자동 다음 게임
+# [수정2] 자동 다음 게임
 if data['phase'] == 'GAME_OVER' and time.time() - data['game_over_time'] > AUTO_NEXT_HAND_DELAY:
     save_data(reset_for_next_hand(data)); st.rerun()
 
@@ -350,7 +359,6 @@ st.markdown(f'<div class="top-hud"><div>LV {lvl}</div><div class="hud-time">{int
 
 col_table, col_controls = st.columns([1.5, 1])
 
-# 테이블
 with col_table:
     html = '<div class="game-board-container"><div class="poker-table"></div>'
     comm = "".join([make_comm_card(c) for c in data['community']])
@@ -359,24 +367,21 @@ with col_table:
         hero = "hero-seat" if i == my_seat else ""; timer_html = f'<div class="turn-timer">⏰ {int(time_left)}s</div>' if i == curr_idx and data['phase'] != 'GAME_OVER' else ""
         if p['name'] == "빈 자리": 
             html += f'<div class="seat pos-{i}" style="opacity:0.2;"><div>빈 자리</div></div>'; continue
-            
+        
+        cards = "<div style='font-size:16px;'>🂠 🂠</div>"
         if p['status'] == 'folded': cards = "<div class='fold-text'>FOLD</div>"; cls = "folded-seat"
-        else:
-            cls = ""
-            if i == my_seat or (data['phase'] == 'GAME_OVER' and p['status'] == 'alive'):
-                cards = f"<div>{make_card(p['hand'][0])}{make_card(p['hand'][1])}</div>" if p['hand'] else ""
-            else: cards = "<div style='font-size:16px;'>🂠 🂠</div>"
+        elif i == my_seat or (data['phase'] == 'GAME_OVER' and p['status'] == 'alive'):
+            cards = f"<div>{make_card(p['hand'][0])}{make_card(p['hand'][1])}</div>" if p['hand'] else ""
+        
         role = f"<div class='role-badge role-{p['role']}'>{p['role']}</div>" if p['role'] else ""
-        html += f'<div class="seat pos-{i} {active} {hero} {cls}">{timer_html}{role}<div><b>{p["name"]}</b></div><div>{int(p["stack"]):,}</div>{cards}<div class="action-badge">{p["action"]}</div></div>'
+        html += f'<div class="seat pos-{i} {active} {hero} {p["status"] == "folded" and "folded-seat" or ""}">{timer_html}{role}<div><b>{p["name"]}</b></div><div>{int(p["stack"]):,}</div>{cards}<div class="action-badge">{p["action"]}</div></div>'
     html += f'<div style="position:absolute; top:45%; left:50%; transform:translate(-50%,-50%); text-align:center; color:white;"><div>{comm}</div><h3 style="margin:0;">Pot: {data["pot"]:,}</h3><p style="font-size:14px; color:#ffeb3b;">{data["msg"]}</p></div></div>'
     st.markdown(html, unsafe_allow_html=True)
 
-# 컨트롤러
 with col_controls:
     if data['phase'] == 'GAME_OVER':
-        st.info(f"게임 종료! {int(AUTO_NEXT_HAND_DELAY - (time.time() - data['game_over_time']))}초 후 다음 판 시작...")
-        if st.button("즉시 시작"): save_data(reset_for_next_hand(load_data())); st.rerun()
-            
+        st.info(f"게임 종료! {int(AUTO_NEXT_HAND_DELAY - (time.time() - data['game_over_time']))}초 후 다음 판 자동 시작...")
+        
     elif curr_idx == my_seat and me['status'] == 'alive':
         st.success(f"내 차례! ({int(time_left)}초)"); to_call = data['current_bet'] - me['bet']
         c1, c2 = st.columns(2)
@@ -395,7 +400,9 @@ with col_controls:
                 if p != me and p['status'] == 'alive' and p['stack'] > 0: p['has_acted'] = False
             if not check_phase_end(data): pass_turn(data)
             save_data(data); st.rerun()
+        
         st.markdown("---")
+        # [수정6] 레이즈: 숫자 입력기 (+/-)
         min_r = max(200, data['current_bet']*2)
         if me['stack'] > to_call:
             step_val = 1000 if sb >= 1000 else 100
@@ -410,9 +417,10 @@ with col_controls:
         time.sleep(1); st.rerun()
         
     elif me['status'] == 'folded' and data['phase'] != 'GAME_OVER':
+        # [수정4] 리바인 로직 (3단)
         if me['stack'] == 0 and me['rebuy_count'] < 2:
             rebuy_amt = 70000 if me['rebuy_count'] == 0 else 80000
-            st.error(f"파산했습니다! (남은 리바인: {2 - me['rebuy_count']}회)")
+            st.error(f"파산! 리바인 가능 ({2 - me['rebuy_count']}회 남음)")
             if st.button(f"리바인 ({rebuy_amt}칩)"):
                 data = load_data(); me = data['players'][my_seat]
                 me['stack'] = rebuy_amt; me['rebuy_count'] += 1; save_data(data); st.rerun()
@@ -420,5 +428,4 @@ with col_controls:
             st.warning("관전 중... (다음 판 참여)"); time.sleep(1); st.rerun()
             
     else:
-        # 내 차례 아닐 때 (다른 사람 행동 대기)
-        st.info(f"👤 {curr_p['name']} 고민 중... ({int(time_left)}s)"); time.sleep(1); st.rerun()
+        st.info(f"👤 {curr_p['name']} 대기 중... ({int(time_left)}s)"); time.sleep(1); st.rerun()
