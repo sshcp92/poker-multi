@@ -6,7 +6,7 @@ import json
 import shutil
 
 # ==========================================
-# 1. 설정 & 디자인 (모바일 최적화 고정)
+# 1. 설정 & 디자인 (화면 깜빡임 제거 + 모바일 최적화)
 # ==========================================
 st.set_page_config(layout="wide", page_title="AI 몬스터 토너먼트 - FINAL", page_icon="🦁")
 
@@ -24,12 +24,13 @@ BLIND_STRUCTURE = [
 LEVEL_DURATION = 600
 TURN_TIMEOUT = 30 
 AUTO_NEXT_HAND_DELAY = 10 
-DISCONNECT_TIMEOUT = 15 # 15초간 생존신고 없으면 탈주 처리
+DISCONNECT_TIMEOUT = 15 
 
 RANKS = '23456789TJQKA'
 SUITS = ['♠', '♥', '♦', '♣']
 DISPLAY_MAP = {'T': '10', 'J': 'J', 'Q': 'Q', 'K': 'K', 'A': 'A'}
 
+# [수정1] 화면 깜빡임(Running 오버레이) 제거 CSS 추가
 st.markdown("""<style>
 .stApp {background-color:#121212;}
 .top-hud { display: flex; justify-content: space-around; align-items: center; background: #333; padding: 8px; border-radius: 10px; margin-bottom: 5px; border: 1px solid #555; color: white; font-weight: bold; font-size: 13px; }
@@ -54,12 +55,16 @@ st.markdown("""<style>
 .stButton>button { font-size: 14px !important; height: 40px !important; }
 div[data-baseweb="input"] { background-color: #333; color: white; border: 1px solid #555; }
 div[data-baseweb="input"] input { text-align: center; font-weight: bold; }
+
+/* 깜빡임 방지 및 로딩 숨김 */
+div[data-testid="stStatusWidget"] {visibility: hidden;}
+.stApp > header {visibility: hidden;}
 </style>""", unsafe_allow_html=True)
 
 # ==========================================
 # 2. 데이터 엔진
 # ==========================================
-DATA_FILE = "poker_final_v15.json"
+DATA_FILE = "poker_final_v16.json"
 
 def init_game_data():
     deck = [r+s for r in RANKS for s in SUITS]; random.shuffle(deck)
@@ -137,17 +142,16 @@ def reset_for_next_hand(old_data):
         players[new_dealer_idx]['role'] = 'D'; players[sb_idx]['role'] = 'SB'; players[bb_idx]['role'] = 'BB'
         turn_start_idx = find_next_active(bb_idx)
 
-    # [수정-핵심] 블라인드를 냈어도 has_acted = False로 두어 옵션 보장
     if players[sb_idx]['status'] == 'alive':
         pay = min(players[sb_idx]['stack'], sb_amt)
         players[sb_idx]['stack'] -= pay; players[sb_idx]['bet'] = pay; 
-        players[sb_idx]['has_acted'] = False; # SB도 림프 시 결정권 있음
+        players[sb_idx]['has_acted'] = False; 
         current_pot += pay
         
     if players[bb_idx]['status'] == 'alive':
         pay = min(players[bb_idx]['stack'], bb_amt)
         players[bb_idx]['stack'] -= pay; players[bb_idx]['bet'] = pay; 
-        players[bb_idx]['has_acted'] = False; # BB 옵션 필수 (체크/레이즈)
+        players[bb_idx]['has_acted'] = False; 
         current_pot += pay
 
     return {
@@ -285,7 +289,6 @@ def pass_turn(data):
              data['players'][idx]['has_acted'] = True
     data['turn_start_time'] = time.time(); save_data(data)
 
-# [수정] 플레이어 강제 퇴장 로직 (탈주 시 스택 소멸)
 def check_disconnection(data):
     now = time.time()
     changed = False
@@ -410,13 +413,17 @@ with col_table:
         if p['status'] == 'folded': cards = "<div class='fold-text'>FOLD</div>"; cls = "folded-seat"
         else:
             cls = ""
-            if i == my_seat or (data['phase'] == 'GAME_OVER' and p['status'] == 'alive'):
+            # [수정2] 게임 종료 시(GAME_OVER) 폴드하지 않은 모든 사람 카드 오픈
+            if i == my_seat or (data['phase'] == 'GAME_OVER' and p['status'] != 'folded') or (data['phase'] != 'GAME_OVER' and p['status'] == 'alive' and i == my_seat):
                 cards = f"<div>{make_card(p['hand'][0])}{make_card(p['hand'][1])}</div>" if p['hand'] else ""
         
         role = p['role']; role_cls = "role-D-SB" if role == "D-SB" else f"role-{role}"
         role_div = f"<div class='role-badge {role_cls}'>{role}</div>" if role else ""
         html += f'<div class="seat pos-{i} {active} {hero} {cls}">{timer_html}{role_div}<div><b>{p["name"]}</b></div><div>{int(p["stack"]):,}</div>{cards}<div class="action-badge">{p["action"]}</div></div>'
-    html += f'<div style="position:absolute; top:45%; left:50%; transform:translate(-50%,-50%); text-align:center; color:white;"><div>{comm}</div><h3 style="margin:0;">Pot: {data["pot"]:,}</h3><p style="font-size:14px; color:#ffeb3b;">{data["msg"]}</p></div></div>'
+    
+    # [수정] 중앙 메시지 글씨 키우기
+    msg_html = f'<div style="position:absolute; top:45%; left:50%; transform:translate(-50%,-50%); text-align:center; color:white; width:100%;"><div>{comm}</div><h3 style="margin:0;">Pot: {data["pot"]:,}</h3><p style="font-size:18px; color:#ffeb3b; font-weight:bold; background:rgba(0,0,0,0.7); padding:5px; border-radius:5px;">{data["msg"]}</p></div>'
+    html += msg_html + '</div>'
     st.markdown(html, unsafe_allow_html=True)
 
 with col_controls:
@@ -424,8 +431,6 @@ with col_controls:
         if curr_idx == my_seat and me['status'] == 'alive':
             st.success(f"내 차례! ({int(time_left)}초)"); to_call = data['current_bet'] - me['bet']
             c1, c2 = st.columns(2)
-            
-            # [수정] 옵션 UI 표시
             check_label = "체크/콜"
             if data['phase'] == 'PREFLOP' and to_call == 0 and ('BB' in me['role'] or 'SB' in me['role']):
                 check_label = "체크 (옵션)"
