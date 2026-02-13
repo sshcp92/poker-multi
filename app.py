@@ -24,7 +24,7 @@ LEVEL_DURATION = 600
 TURN_TIMEOUT = 30
 AUTO_NEXT_HAND_DELAY = 10
 
-# ✅ 올인/잠깐 탭 전환에 튕기지 않게 여유
+# ✅ 올인/탭 전환에 튕기지 않게 여유
 DISCONNECT_TIMEOUT = 90
 
 RANKS = "23456789TJQKA"
@@ -35,51 +35,108 @@ DB_FILE = "poker_state.db"
 GAME_ID = "MAIN"
 
 # ---------------- CSS ----------------
+# ✅ 요청 반영:
+# - 회색톤 배지 X (배경이 검정이라 회색이 묻힘)
+# - SB/BB/Ante/Avg는 모두 빨강 계열
+# - 타이머는 노란색 + 잘림 방지(높이/라인하이트/패딩)
 st.markdown(
     """<style>
-.stApp {background-color:#121212;}
+.stApp {background-color:#0e0e0e;}
 div[data-testid="stStatusWidget"] {visibility: hidden;}
 .stApp > header {visibility: hidden;}
 
-.top-hud { display:flex; justify-content:space-between; align-items:center;
-  background:#333; padding:10px 12px; border-radius:12px; margin-bottom:8px;
-  border:1px solid #555; color:white; font-weight:800; font-size:13px; gap:10px; }
+/* HUD */
+.top-hud {
+  display:flex; justify-content:space-between; align-items:center;
+  background:#151515; padding:12px 14px; border-radius:14px; margin-bottom:10px;
+  border:1px solid #2a2a2a; color:white; font-weight:900; gap:10px;
+}
 .hud-left, .hud-mid, .hud-right { display:flex; align-items:center; gap:10px; }
-.hud-badge { background:#1f1f1f; border:1px solid #666; padding:6px 10px; border-radius:10px; }
-.hud-time { color:#ffeb3b; font-size:18px; font-weight:900; }
+.hud-title {
+  background:#111; border:1px solid #333; padding:8px 12px;
+  border-radius:12px; font-size:13px; letter-spacing:0.5px;
+}
 
-.game-board-container { position:relative; width:100%; min-height:450px; height:65vh; margin:0 auto;
-  background-color:#1e1e1e; border-radius:20px; border:3px solid #333; overflow:hidden; }
-.poker-table { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-  width:92%; height:75%; background: radial-gradient(#5d4037, #3e2723);
-  border:12px solid #281915; border-radius:150px; box-shadow: inset 0 0 30px rgba(0,0,0,0.8); }
+/* ✅ 빨강 계열 배지 */
+.hud-red {
+  background: linear-gradient(180deg, #220000, #120000);
+  border:1px solid #ff4d4d;
+  padding:8px 12px;
+  border-radius:12px;
+  color:#ff4d4d;
+  font-size:13px;
+  box-shadow: 0 0 10px rgba(255,77,77,0.15);
+}
+.hud-red b { color:#ff6b6b; font-size:14px; }
 
-.seat { position:absolute; width:95px; height:110px; background:#2c2c2c; border:2px solid #666; border-radius:12px;
-  color:white; text-align:center; font-size:10px; display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:10; }
+/* ✅ 타이머(노란색) */
+.hud-time-wrap{
+  background:#111;
+  border:1px solid #444;
+  padding:8px 12px;
+  border-radius:12px;
+  min-width: 90px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.hud-time {
+  color:#ffeb3b;
+  font-size:20px;
+  font-weight:1000;
+  line-height:22px;
+}
+
+/* Board */
+.game-board-container {
+  position:relative; width:100%; min-height:450px; height:65vh; margin:0 auto;
+  background-color:#141414; border-radius:20px; border:3px solid #2a2a2a; overflow:hidden;
+}
+.poker-table {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:92%; height:75%;
+  background: radial-gradient(#5d4037, #3e2723);
+  border:12px solid #281915; border-radius:150px;
+  box-shadow: inset 0 0 30px rgba(0,0,0,0.8);
+}
+.seat {
+  position:absolute; width:95px; height:110px;
+  background:#1f1f1f; border:2px solid #555; border-radius:12px;
+  color:white; text-align:center; font-size:10px;
+  display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:10;
+}
 .pos-0 {top:5%; right:20%;} .pos-1 {top:25%; right:3%;} .pos-2 {bottom:25%; right:3%;} .pos-3 {bottom:5%; right:20%;}
 .pos-4 {bottom:2%; left:50%; transform:translateX(-50%);}
 .pos-5 {bottom:5%; left:20%;} .pos-6 {bottom:25%; left:3%;} .pos-7 {top:25%; left:3%;} .pos-8 {top:5%; left:20%;}
 
-.hero-seat { border:3px solid #ffd700; background:#3a3a3a; box-shadow:0 0 15px #ffd700; z-index:20; }
+.hero-seat { border:3px solid #ffd700; background:#2a2a2a; box-shadow:0 0 15px #ffd700; z-index:20; }
 .active-turn { border:3px solid #ffeb3b !important; box-shadow:0 0 15px #ffeb3b; }
 
 .card-span {background:white; padding:1px 4px; border-radius:4px; margin:1px; font-weight:bold; font-size:18px; color:black; border:1px solid #ccc; display:inline-block;}
 .comm-card-span { font-size:28px !important; padding:3px 6px !important; }
 
-.role-badge { position:absolute; top:-8px; left:-8px; min-width:24px; height:24px; padding:0 4px; border-radius:12px; color:black;
-  font-weight:bold; line-height:22px; border:1px solid #333; z-index:100; font-size:11px; background:white; }
+.role-badge {
+  position:absolute; top:-8px; left:-8px; min-width:24px; height:24px; padding:0 4px;
+  border-radius:12px; color:black; font-weight:bold; line-height:22px;
+  border:1px solid #333; z-index:100; font-size:11px; background:white;
+}
 .role-D { background:#ffeb3b; } .role-SB { background:#90caf9; } .role-BB { background:#ef9a9a; }
 .role-D-SB { background: linear-gradient(135deg, #ffeb3b 50%, #90caf9 50%); font-size:10px; }
 
-.action-badge { position:absolute; bottom:-12px; background:#ffeb3b; color:black; font-weight:bold; padding:1px 5px; border-radius:4px;
-  font-size:10px; border:1px solid #000; z-index:100; white-space:nowrap; }
+.action-badge {
+  position:absolute; bottom:-12px; background:#ffeb3b; color:black; font-weight:bold;
+  padding:1px 5px; border-radius:4px; font-size:10px; border:1px solid #000; z-index:100; white-space:nowrap;
+}
 .fold-text { color:#ff5252; font-weight:bold; font-size:14px; }
 .folded-seat { opacity:0.4; }
 .turn-timer { position:absolute; top:-20px; width:100%; text-align:center; color:#ff5252; font-weight:bold; font-size:12px; }
 
 .winner-seat { border:3px solid #00e676 !important; box-shadow:0 0 18px #00e676 !important; }
-.winner-badge { position:absolute; top:-16px; right:-10px; background:#00e676; color:black; font-weight:900; font-size:10px;
-  padding:2px 6px; border-radius:10px; border:1px solid #0b3d1a; z-index:120; }
+.winner-badge {
+  position:absolute; top:-16px; right:-10px;
+  background:#00e676; color:black; font-weight:900; font-size:10px;
+  padding:2px 6px; border-radius:10px; border:1px solid #0b3d1a; z-index:120;
+}
 
 .center-msg { position:absolute; top:45%; left:50%; transform:translate(-50%,-50%); text-align:center; color:white; width:100%; }
 .center-msg h3 { margin:0; }
@@ -87,6 +144,7 @@ div[data-testid="stStatusWidget"] {visibility: hidden;}
 .center-msg .showdown { margin-top:10px; font-size:14px; color:#b2ff59; font-weight:900; }
 .center-msg .sdrow { margin-top:6px; color:#e0e0e0; font-weight:800; font-size:13px; }
 .center-msg .sdrow b { color:#b2ff59; }
+
 </style>""",
     unsafe_allow_html=True,
 )
@@ -293,16 +351,8 @@ def init_game_data():
         "hand_id": 0,
         "showdown": None,
         "winner_seats": [],
-        "last_action_note": "",  # ✅ 직전 액션 표시용
+        "last_action_note": "",
     }
-
-def occupied_players(players):
-    # ✅ 자리 점유자(게임 참가자): 이름이 있으면 참가자로 봄
-    return [p for p in players if p["name"] != "빈 자리"]
-
-def in_hand_players(players):
-    # ✅ 핸드 진행 중 참가자: alive/folded 포함(올인 stack=0도 alive임)
-    return [p for p in players if p["name"] != "빈 자리" and p["status"] in ("alive", "folded")]
 
 def find_next_alive(players, idx):
     for i in range(1, 10):
@@ -404,7 +454,6 @@ def assign_positions_and_post_blinds(data):
     data["msg"] = f"Level {data['level']} 시작! (SB {sb_amt}/BB {bb_amt})"
 
 def reset_for_next_hand(data):
-    # ✅ 참가자(자리 점유)가 2명 이상이면 시작
     occ = [p for p in data["players"] if p["name"] != "빈 자리" and p["stack"] > 0]
     if len(occ) < 2:
         data["phase"] = "WAITING"
@@ -414,7 +463,7 @@ def reset_for_next_hand(data):
     assign_positions_and_post_blinds(data)
     return data
 
-# ---------------- 사이드팟 ----------------
+# ---------------- 사이드팟/분배 ----------------
 def build_side_pots(pool):
     contribs = [(i, p["contrib"]) for i, p in pool if p["contrib"] > 0]
     if not contribs:
@@ -481,12 +530,8 @@ def next_street(data):
     data["turn_idx"] = find_next_alive(data["players"], d)
     data["turn_start_time"] = time.time()
 
-    # ✅ 직전 액션을 메시지에 남겨서 "BB 체크하고 플랍 열림"이 보이게
     note = data.get("last_action_note", "")
-    if note:
-        data["msg"] = f"{data['phase']} 시작! (이전: {note})"
-    else:
-        data["msg"] = f"{data['phase']} 시작!"
+    data["msg"] = f"{data['phase']} 시작! (이전: {note})" if note else f"{data['phase']} 시작!"
 
 def pass_turn(data):
     curr = data["turn_idx"]
@@ -512,10 +557,7 @@ def showdown(data):
         data["winner_seats"] = [wi]
         data["showdown"] = {
             "winners": [{
-                "seat": wi,
-                "name": wp["name"],
-                "hand": wp["hand"],
-                "desc": "전원 폴드 승리",
+                "seat": wi, "name": wp["name"], "hand": wp["hand"], "desc": "전원 폴드 승리"
             }],
             "board": data["community"],
             "pot": data["pot"],
@@ -530,7 +572,7 @@ def showdown(data):
     pots = build_side_pots(pool)
     eval_cache = {i: best_of_7(p["hand"] + data["community"]) for i, p in alive}
 
-    rep = None  # (amount, winners, desc)
+    rep = None
     for pot in pots:
         elig_alive = [i for i in pot["eligible"] if players[i]["status"] == "alive"]
         if not elig_alive:
@@ -627,8 +669,7 @@ def do_call_or_check(data, seat):
     data["pot"] += pay
     p["has_acted"] = True
 
-    # ✅ BB 옵션 체크는 문구를 구분
-    if pay == 0 and data["phase"] == "PREFLOP" and ("BB" in p.get("role", "") or p.get("role") == "BB"):
+    if pay == 0 and data["phase"] == "PREFLOP" and (p.get("role") == "BB"):
         p["action"] = "체크(옵션)"
         set_last_action(data, p["name"], "체크(옵션)")
     else:
@@ -692,6 +733,43 @@ def do_raise_to(data, seat, raise_to):
 
     return True, ""
 
+# ---------------- 리바인(자동) ----------------
+# 총 엔트리 3개 = 최초 60k + 리바인 70k + 리바인 80k
+def auto_rebuy_after_hand(data):
+    # GAME_OVER 직후, 칩 0인 사람 자동 리바인 / 3엔트리 소진 시 퇴장 처리
+    for p in data["players"]:
+        if p["name"] == "빈 자리":
+            continue
+        if p["stack"] > 0:
+            continue
+
+        # 이미 탈락/대기 상태면 skip
+        # (여기서는 name이 남아있고 stack 0이면 '파산 상태'로 봄)
+        if p.get("rebuy_count", 0) < 2:
+            # 0 -> 70k, 1 -> 80k
+            amt = 70000 if p["rebuy_count"] == 0 else 80000
+            p["rebuy_count"] += 1
+            p["stack"] = amt
+            p["status"] = "folded"
+            p["action"] = f"자동리바인({amt:,})"
+            p["bet"] = 0
+            p["contrib"] = 0
+            p["hand"] = []
+            p["has_acted"] = True
+        else:
+            # 3엔트리 소진 → 자리 비우기
+            p["name"] = "빈 자리"
+            p["is_human"] = False
+            p["status"] = "standby"
+            p["action"] = "탈락"
+            p["stack"] = 0
+            p["bet"] = 0
+            p["contrib"] = 0
+            p["hand"] = []
+            p["role"] = ""
+            p["has_acted"] = True
+            p["last_active"] = 0
+
 # ---------------- 끊김 처리 ----------------
 def check_disconnection(data):
     now = time.time()
@@ -710,8 +788,6 @@ def check_disconnection(data):
                     if i == data["turn_idx"]:
                         pass_turn(data)
 
-    # ✅ BUGFIX: 올인(stack=0) 때문에 WAITING으로 튕기지 않게
-    # '참가자 자리 점유' 기준으로 2명 미만이면 중단
     occupied = [p for p in players if p["name"] != "빈 자리"]
     if data["phase"] != "WAITING" and len(occupied) < 2:
         data["phase"] = "WAITING"
@@ -720,12 +796,17 @@ def check_disconnection(data):
 
     return changed
 
-# ---------------- 프론트 카운트다운(깜빡임 완화) ----------------
+# ---------------- 프론트 카운트다운(✅ 잘림 방지) ----------------
 def render_live_countdown(seconds_left: int):
     seconds_left = max(0, int(seconds_left))
     components.html(
         f"""
-        <div id="cd" style="color:#ffeb3b;font-weight:900;font-size:18px;"></div>
+        <div style="height:28px; display:flex; align-items:center; justify-content:center; padding:0; margin:0;">
+          <div id="cd"
+               style="color:#ffeb3b;font-weight:1000;font-size:20px;line-height:22px;
+                      padding:0; margin:0; white-space:nowrap;">
+          </div>
+        </div>
         <script>
           let left = {seconds_left};
           function pad(n){{ return String(n).padStart(2,'0'); }}
@@ -738,7 +819,7 @@ def render_live_countdown(seconds_left: int):
           setInterval(()=>{{ if(left>0) left--; draw(); }}, 1000);
         </script>
         """,
-        height=28,
+        height=32,   // ✅ 컨테이너 높이를 넉넉히 줘서 안 잘리게
     )
 
 # ---------------- init DB ----------------
@@ -770,7 +851,7 @@ if "my_seat" not in st.session_state:
                 s["players"][target] = {
                     "name": u_name,
                     "seat": target + 1,
-                    "stack": 60000,
+                    "stack": 60000,  # ✅ 첫 엔트리 60k
                     "hand": [],
                     "bet": 0,
                     "contrib": 0,
@@ -779,7 +860,7 @@ if "my_seat" not in st.session_state:
                     "is_human": True,
                     "role": "",
                     "has_acted": True,
-                    "rebuy_count": 0,
+                    "rebuy_count": 0,  # ✅ 0이면 다음 자동리바인 70k
                     "last_active": time.time(),
                 }
                 active_stacks = len([p for p in s["players"] if p["name"] != "빈 자리" and p["stack"] > 0])
@@ -840,21 +921,30 @@ curr_p = data["players"][curr_idx]
 elapsed = time.time() - data["start_time"]
 lvl = min(len(BLIND_STRUCTURE), int(elapsed // LEVEL_DURATION) + 1)
 sb, bb, ante = BLIND_STRUCTURE[lvl - 1]
-alive_p = [p for p in data["players"] if p["name"] != "빈 자리" and p["stack"] > 0]
-avg_stack = (sum(p["stack"] for p in alive_p) // len(alive_p)) if alive_p else 0
+alive_stacks = [p for p in data["players"] if p["name"] != "빈 자리" and p["stack"] > 0]
+avg_stack = (sum(p["stack"] for p in alive_stacks) // len(alive_stacks)) if alive_stacks else 0
 remain = int(LEVEL_DURATION - (elapsed % LEVEL_DURATION))
 
+players_now = len([p for p in data["players"] if p["name"] != "빈 자리"])
+players_max = 9
+
 st.markdown('<div class="top-hud">', unsafe_allow_html=True)
-st.markdown(f'<div class="hud-left"><div class="hud-badge">LV {lvl}</div></div>', unsafe_allow_html=True)
-st.markdown('<div class="hud-mid hud-time">', unsafe_allow_html=True)
+st.markdown(
+    f'<div class="hud-left">'
+    f'<div class="hud-title">LV {lvl}</div>'
+    f'<div class="hud-title">Players {players_now}/{players_max}</div>'
+    f'</div>',
+    unsafe_allow_html=True
+)
+st.markdown('<div class="hud-mid hud-time-wrap"><div class="hud-time">', unsafe_allow_html=True)
 render_live_countdown(remain)
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("</div></div>", unsafe_allow_html=True)
 st.markdown(
     f'<div class="hud-right">'
-    f'<div class="hud-badge">SB <b>{sb:,}</b></div>'
-    f'<div class="hud-badge">BB <b>{bb:,}</b></div>'
-    f'<div class="hud-badge">Ante <b>{ante:,}</b></div>'
-    f'<div class="hud-badge">Avg <b>{avg_stack:,}</b></div>'
+    f'<div class="hud-red">SB <b>{sb:,}</b></div>'
+    f'<div class="hud-red">BB <b>{bb:,}</b></div>'
+    f'<div class="hud-red">Ante <b>{ante:,}</b></div>'
+    f'<div class="hud-red">Avg <b>{avg_stack:,}</b></div>'
     f'</div>',
     unsafe_allow_html=True
 )
@@ -879,7 +969,7 @@ if data["phase"] not in ("WAITING", "GAME_OVER") and time_left <= 0:
     atomic_update(timeout_mut)
     st.rerun()
 
-# ---------------- 메인 렌더(✅ GAME_OVER도 여기서 같이 렌더) ----------------
+# ---------------- 메인 렌더 ----------------
 col_table, col_controls = st.columns([1.5, 1])
 
 winner_seats = set(data.get("winner_seats") or [])
@@ -893,7 +983,7 @@ with col_table:
         rem = int(AUTO_NEXT_HAND_DELAY - (time.time() - data["game_over_time"]))
         st.info(f"게임 종료! {rem}초 후 다음 판 시작...")
 
-        # 승리 효과(핸드당 1회)
+        # 승리 효과
         last_fx = st.session_state.get("last_fx_hand_id", None)
         if showdown_info and data.get("hand_id") is not None and last_fx != data["hand_id"]:
             st.session_state["last_fx_hand_id"] = data["hand_id"]
@@ -964,16 +1054,10 @@ with col_controls:
         st.markdown("### 내 카드")
         st.markdown(f"{make_card(me['hand'][0])}{make_card(me['hand'][1])}", unsafe_allow_html=True)
 
-    if data["phase"] == "WAITING":
+    if data["phase"] in ("WAITING", "GAME_OVER"):
         if st.button("⚠️ 서버 초기화", use_container_width=True):
             atomic_update(lambda _s: init_game_data())
             st.rerun()
-
-    elif data["phase"] == "GAME_OVER":
-        if st.button("⚠️ 서버 초기화", use_container_width=True):
-            atomic_update(lambda _s: init_game_data())
-            st.rerun()
-
     else:
         if curr_idx == my_seat and me["status"] == "alive":
             st.success(f"내 차례! ({int(time_left)}초)")
@@ -1017,17 +1101,35 @@ with col_controls:
 
             st.markdown("---")
 
+            # ✅ 오류(StreamlitValueAboveMaxError) 방지: value를 범위 안으로 강제
             if me["stack"] > 0:
                 min_to = data["bb"] if data["current_bet"] == 0 else (data["current_bet"] + data["last_raise_size"])
                 max_to = me["bet"] + me["stack"]
                 step_val = 1000 if sb >= 1000 else 100
-                raise_to = st.number_input("레이즈/베팅 (총액 기준)", min_value=int(min_to), max_value=int(max_to), step=step_val)
+
+                # 세션에 기존 값이 있으면 불러오되, 무조건 범위 안으로 클램프
+                key = "raise_to_value"
+                prev = st.session_state.get(key, min_to)
+                safe = max(min_to, min(int(prev), int(max_to))) if max_to >= min_to else int(max_to)
+                st.session_state[key] = safe
+
+                raise_to = st.number_input(
+                    "레이즈/베팅 (총액 기준)",
+                    min_value=int(min_to),
+                    max_value=int(max_to),
+                    step=int(step_val),
+                    value=int(safe),
+                    key="raise_to_widget",
+                )
+
+                # 사용자가 바꾼 값도 저장
+                st.session_state[key] = int(raise_to)
 
                 if st.button("레이즈 확정", use_container_width=True):
                     def act_mut(s):
                         if s["turn_idx"] != my_seat or s["players"][my_seat]["status"] != "alive":
                             return s
-                        ok, msg = do_raise_to(s, my_seat, int(raise_to))
+                        ok, msg = do_raise_to(s, my_seat, int(st.session_state.get(key, min_to)))
                         if not ok:
                             s["msg"] = f"❗ {msg}"
                             return s
@@ -1043,11 +1145,15 @@ with col_controls:
             atomic_update(lambda _s: init_game_data())
             st.rerun()
 
-# ---------------- GAME_OVER 다음판 처리 ----------------
+# ---------------- GAME_OVER 다음판 처리 + 자동리바인 적용 ----------------
 if data["phase"] == "GAME_OVER":
     rem = int(AUTO_NEXT_HAND_DELAY - (time.time() - data["game_over_time"]))
     if rem <= 0:
-        atomic_update(lambda s: reset_for_next_hand(s))
+        def go_next(s):
+            auto_rebuy_after_hand(s)  # ✅ 엔트리 3개 자동리바인
+            reset_for_next_hand(s)
+            return s
+        atomic_update(go_next)
 
 # ---------------- rerun 주기 ----------------
 if data["phase"] == "WAITING":
