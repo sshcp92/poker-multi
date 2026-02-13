@@ -90,6 +90,39 @@ DISPLAY_MAP = {"T": "10", "J": "J", "Q": "Q", "K": "K", "A": "A"}
 # =========================
 st.markdown(
     """
+    <style>
+/* ===== Sidebar 가독성 Fix ===== */
+section[data-testid="stSidebar"]{
+  background:#0f0f10 !important;
+  border-right:1px solid #222 !important;
+}
+
+/* 사이드바 글자 전부 흰색 */
+section[data-testid="stSidebar"] *{
+  color:#ffffff !important;
+}
+
+/* 입력창(방코드/닉네임) */
+section[data-testid="stSidebar"] input,
+section[data-testid="stSidebar"] textarea{
+  background:#151515 !important;
+  color:#ffffff !important;
+  border:1px solid #333 !important;
+}
+
+/* placeholder(회색 글씨) */
+section[data-testid="stSidebar"] input::placeholder,
+section[data-testid="stSidebar"] textarea::placeholder{
+  color:#bdbdbd !important;
+}
+
+/* 토글/캡션도 더 선명하게 */
+section[data-testid="stSidebar"] .stCaption,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p{
+  color:#e0e0e0 !important;
+}
+</style>
+""", unsafe_allow_html=True)
 <style>
 /* base */
 .stApp { background:#0f0f10; color:#fff; }
@@ -1065,3 +1098,4 @@ if auto_refresh:
     except Exception:
         # 패키지 없으면 자동 갱신 없이 진행(클릭 안정성 우선)
         st.caption("자동 새로고침 모듈이 없어 기본 자동갱신은 꺼진 상태로 동작합니다. (버튼 클릭은 정상)")
+
