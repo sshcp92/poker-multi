@@ -12,34 +12,49 @@ st.set_page_config(layout="wide", page_title="AI 몬스터 토너먼트", page_i
 # =========================
 # 1. Supabase
 # =========================
-SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
-SUPABASE_ANON_KEY = st.secrets.get("SUPABASE_ANON_KEY", "")
+SUPABASE_URL = (st.secrets.get("SUPABASE_URL", "") or "").strip()
+SUPABASE_ANON_KEY = (st.secrets.get("SUPABASE_ANON_KEY", "") or "").strip()
 
 _supabase = None
+_supabase_err = None
+
 if SUPABASE_URL and SUPABASE_ANON_KEY:
     try:
         from supabase import create_client
         _supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-    except Exception:
+    except Exception as e:
         _supabase = None
+        _supabase_err = str(e)
 
 
 def sb_room_get(room_code: str) -> Optional[Dict[str, Any]]:
     if _supabase is None:
         return None
-    res = _supabase.table("poker_rooms").select("room_code,state,updated_at").eq("room_code", room_code).execute()
-    if res.data and len(res.data) > 0:
-        row = res.data[0]
-        return row["state"]
-    return None
+    try:
+        res = (
+            _supabase.table("poker_rooms")
+            .select("room_code,state,updated_at")
+            .eq("room_code", room_code)
+            .execute()
+        )
+        if res.data and len(res.data) > 0:
+            row = res.data[0]
+            return row.get("state")
+        return None
+    except Exception:
+        # 네트워크/정책/테이블 문제 등 어떤 이유든 앱 전체 다운 방지
+        return None
 
 
 def sb_room_upsert(room_code: str, state: Dict[str, Any]) -> bool:
     if _supabase is None:
         return False
-    payload = {"room_code": room_code, "state": state}
-    _supabase.table("poker_rooms").upsert(payload).execute()
-    return True
+    try:
+        payload = {"room_code": room_code, "state": state}
+        _supabase.table("poker_rooms").upsert(payload).execute()
+        return True
+    except Exception:
+        return False
 
 
 # =========================
@@ -71,17 +86,35 @@ DISPLAY_MAP = {"T": "10", "J": "J", "Q": "Q", "K": "K", "A": "A"}
 
 
 # =========================
-# 3. CSS (가독성/색/빈막대 제거/깜빡임 완화)
+# 3. CSS (가독성/색/빈막대 제거)
 # =========================
 st.markdown(
     """
 <style>
+/* base */
 .stApp { background:#0f0f10; color:#fff; }
 .stApp > header { visibility:hidden; }
 div[data-testid="stStatusWidget"]{visibility:hidden;}
-/* 위쪽 빈 막대(디폴트 구분선/블록) 숨김 */
-div[data-testid="stDecoration"] {display:none;}
+div[data-testid="stDecoration"] {display:none;} /* 상단 빈 막대 제거 */
 footer {visibility:hidden;}
+
+/* Streamlit 기본 위젯 글씨가 안 보이는 문제 방지 */
+.stButton > button { 
+  color:#000 !important; 
+  font-weight:900 !important; 
+}
+.stButton > button[kind="primary"]{
+  color:#000 !important;
+}
+.stTextInput input, .stNumberInput input{
+  color:#fff !important;
+}
+div[data-baseweb="input"] input{
+  color:#fff !important;
+}
+label, .stMarkdown, .stCaption, .stText{
+  color:#fff !important;
+}
 
 /* HUD */
 .hud-wrap{
@@ -220,7 +253,6 @@ footer {visibility:hidden;}
   background: rgba(0,0,0,0.55);
   border: 1px solid rgba(255,255,255,0.12);
 }
-
 </style>
 """,
     unsafe_allow_html=True,
@@ -286,12 +318,11 @@ def init_room_state(room_code: str) -> Dict[str, Any]:
         turn_started_at=0.0,
         game_over_at=0.0,
         msg="플레이어를 기다리는 중... (최소 2명)",
-        showdown=[],  # [{"name":..., "hole":[..], "desc":...}, ...]
-        winners=[],   # winner idx list
+        showdown=[],
+        winners=[],
     )
 
 
-# 족보 평가 (너 원본 기반)
 def get_hand_strength_detail(cards: List[str]) -> Tuple[int, List[int], str]:
     if not cards or len(cards) < 5:
         return (-1, [], "No Hand")
@@ -396,7 +427,6 @@ def apply_blinds_and_deal(state: Dict[str, Any]) -> Dict[str, Any]:
         return state
 
     now = time.time()
-    # level calc from started_at
     elapsed = max(0, now - state["started_at"])
     lvl = min(len(BLIND_STRUCTURE), int(elapsed // LEVEL_DURATION) + 1)
     sb_amt, bb_amt, ante_amt = BLIND_STRUCTURE[lvl - 1]
@@ -405,7 +435,6 @@ def apply_blinds_and_deal(state: Dict[str, Any]) -> Dict[str, Any]:
     deck = new_deck()
     pot = 0
 
-    # move dealer to next alive
     cur_d = state["dealer_idx"]
     new_d = cur_d
     for k in range(1, 10):
@@ -415,7 +444,6 @@ def apply_blinds_and_deal(state: Dict[str, Any]) -> Dict[str, Any]:
             break
     state["dealer_idx"] = new_d
 
-    # reset players
     for p in players:
         if p["name"] != "빈 자리" and p["stack"] > 0:
             p["status"] = "alive"
@@ -432,7 +460,6 @@ def apply_blinds_and_deal(state: Dict[str, Any]) -> Dict[str, Any]:
         p["has_acted"] = False
         p["role"] = ""
 
-    # assign roles
     def next_active(idx: int) -> int:
         for k in range(1, 10):
             j = (idx + k) % 9
@@ -454,7 +481,6 @@ def apply_blinds_and_deal(state: Dict[str, Any]) -> Dict[str, Any]:
         players[bb_idx]["role"] = "BB"
         turn_start = next_active(bb_idx)
 
-    # post blinds
     if players[sb_idx]["status"] == "alive":
         pay = min(players[sb_idx]["stack"], sb_amt)
         players[sb_idx]["stack"] -= pay
@@ -485,7 +511,6 @@ def apply_blinds_and_deal(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def start_if_ready(state: Dict[str, Any]) -> Dict[str, Any]:
-    # WAITING 상태에서 2명 이상이면 시작
     alive_idxs = active_player_indices(state["players"])
     if state["phase"] == "WAITING" and len(alive_idxs) >= 2:
         state["started_at"] = time.time()
@@ -503,7 +528,6 @@ def kick_disconnected(state: Dict[str, Any]) -> Dict[str, Any]:
             continue
         last = float(p.get("last_active", 0.0))
         if last > 0 and (now - last) > DISCONNECT_TIMEOUT:
-            # 강퇴
             players[i] = dict(
                 name="빈 자리",
                 seat=i + 1,
@@ -521,7 +545,6 @@ def kick_disconnected(state: Dict[str, Any]) -> Dict[str, Any]:
             changed = True
 
     if changed:
-        # 강퇴로 2명 미만이면 WAITING으로
         alive_idxs = active_player_indices(players)
         if len(alive_idxs) < 2:
             state["phase"] = "WAITING"
@@ -556,9 +579,7 @@ def end_hand_all_fold(state: Dict[str, Any]) -> Dict[str, Any]:
         winner["stack"] += state["pot"]
         state["pot"] = 0
         state["winners"] = [state["players"].index(winner)]
-        state["showdown"] = [
-            {"name": winner["name"], "hole": winner["hand"], "desc": "전원 폴드"}
-        ]
+        state["showdown"] = [{"name": winner["name"], "hole": winner["hand"], "desc": "전원 폴드"}]
         state["msg"] = f"🏆 {winner['name']} 승리! (전원 폴드)"
         state["phase"] = "GAME_OVER"
         state["game_over_at"] = time.time()
@@ -568,6 +589,7 @@ def end_hand_all_fold(state: Dict[str, Any]) -> Dict[str, Any]:
 def showdown_and_end(state: Dict[str, Any]) -> Dict[str, Any]:
     players = state["players"]
     alive_idxs = [i for i, p in enumerate(players) if p["status"] == "alive"]
+
     best_rank = -1
     best_tb: List[int] = []
     winners: List[int] = []
@@ -577,6 +599,7 @@ def showdown_and_end(state: Dict[str, Any]) -> Dict[str, Any]:
         p = players[i]
         rank_val, tb, desc = get_hand_strength_detail(p["hand"] + state["community"])
         showdown_lines.append({"name": p["name"], "hole": p["hand"], "desc": desc, "rank": rank_val, "tb": tb})
+
         if rank_val > best_rank or (rank_val == best_rank and tb > best_tb):
             best_rank = rank_val
             best_tb = tb
@@ -591,7 +614,6 @@ def showdown_and_end(state: Dict[str, Any]) -> Dict[str, Any]:
     state["pot"] = 0
     state["winners"] = winners
 
-    # 보기 좋게 winner desc
     winner_names = ", ".join(players[i]["name"] for i in winners)
     win_desc = ""
     for line in showdown_lines:
@@ -608,7 +630,6 @@ def showdown_and_end(state: Dict[str, Any]) -> Dict[str, Any]:
 
 def check_phase_end(state: Dict[str, Any]) -> Dict[str, Any]:
     players = state["players"]
-    # 전원 폴드 처리
     alive = [p for p in players if p["status"] == "alive"]
     if len(alive) <= 1:
         return end_hand_all_fold(state)
@@ -634,7 +655,6 @@ def check_phase_end(state: Dict[str, Any]) -> Dict[str, Any]:
     elif state["phase"] == "RIVER":
         return showdown_and_end(state)
 
-    # 다음 스트리트 준비
     state["current_bet"] = 0
     for p in players:
         p["bet"] = 0
@@ -642,7 +662,6 @@ def check_phase_end(state: Dict[str, Any]) -> Dict[str, Any]:
         if p["status"] == "alive":
             p["action"] = ""
 
-    # 다음 첫 액션: 딜러 다음 alive
     dealer = state["dealer_idx"]
     state["turn_idx"] = find_next_alive(players, dealer)
     state["turn_started_at"] = time.time()
@@ -665,12 +684,10 @@ def force_timeout_fold(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def auto_rebuy_if_bust(player: Dict[str, Any]) -> bool:
-    # rebuy_count: 0,1,2 => 총 3 엔트리
     if player["stack"] > 0:
         return False
     if player["rebuy_count"] >= 2:
         return False
-    # 자동 리바인
     player["rebuy_count"] += 1
     player["stack"] = REBUY_STACKS[player["rebuy_count"]]
     player["status"] = "folded"
@@ -680,7 +697,7 @@ def auto_rebuy_if_bust(player: Dict[str, Any]) -> bool:
 
 
 # =========================
-# 7. Sidebar: room + join
+# 7. Sidebar: room + join + refresh
 # =========================
 st.sidebar.markdown("### 방 설정")
 room_code = st.sidebar.text_input("방코드", value=st.session_state.get("room_code", "np"))
@@ -694,6 +711,12 @@ if st.sidebar.button("입장/재입장", type="primary"):
     st.session_state.pop("my_seat", None)
     st.rerun()
 
+auto_refresh = st.sidebar.toggle("자동 새로고침(권장)", value=True)
+st.sidebar.caption("※ 자동 새로고침이 너무 빠르면 버튼 클릭이 씹힐 수 있어요. 그럴 땐 끄고 해보세요.")
+
+if st.sidebar.button("🔄 지금 새로고침", use_container_width=True):
+    st.rerun()
+
 if not room_code.strip() or not nickname.strip():
     st.stop()
 
@@ -704,22 +727,20 @@ st.session_state["nickname"] = nickname
 
 if _supabase is None:
     st.error("Supabase 연결이 안 잡혔어. Streamlit Secrets에 SUPABASE_URL / SUPABASE_ANON_KEY 넣었는지 확인해줘.")
+    if _supabase_err:
+        st.caption(f"(supabase init err) {_supabase_err}")
     st.stop()
-
-state = load_room(room_code)
 
 # =========================
 # 8. Join seat
 # =========================
 def ensure_join(state: Dict[str, Any], nickname: str) -> int:
     players = state["players"]
-    # 이미 앉아있으면 그대로
     for i, p in enumerate(players):
         if p["name"] == nickname:
             p["is_human"] = True
             return i
 
-    # 빈자리 찾기(우선 5번 좌석)
     target = -1
     if players[4]["name"] == "빈 자리":
         target = 4
@@ -746,6 +767,8 @@ def ensure_join(state: Dict[str, Any], nickname: str) -> int:
     return target
 
 
+state = load_room(room_code)
+
 if "my_seat" not in st.session_state:
     seat = ensure_join(state, nickname)
     st.session_state["my_seat"] = seat
@@ -755,15 +778,12 @@ if "my_seat" not in st.session_state:
 my_seat = int(st.session_state.get("my_seat", -1))
 players = state["players"]
 
-# seat 유효성 체크(누가 내 자리 뺏는 상황 방지)
 if my_seat < 0 or my_seat >= 9 or players[my_seat]["name"] != nickname:
-    # 다시 매칭 시도
     seat = ensure_join(state, nickname)
     st.session_state["my_seat"] = seat
     save_room(room_code, state)
     st.rerun()
 
-# 내 last_active 갱신
 players[my_seat]["last_active"] = time.time()
 
 # =========================
@@ -778,7 +798,6 @@ save_room(room_code, state)
 # =========================
 now = time.time()
 
-# WAITING일 땐 타이머 흐르면 안 됨
 if state["phase"] == "WAITING":
     level_left = 0
 else:
@@ -786,11 +805,9 @@ else:
     level_left = int(LEVEL_DURATION - (elapsed % LEVEL_DURATION))
     state["level"] = min(len(BLIND_STRUCTURE), int(elapsed // LEVEL_DURATION) + 1)
 
-# 턴 타임아웃
 if state["phase"] not in ["WAITING", "GAME_OVER"]:
     time_left = max(0, TURN_TIMEOUT - (now - state["turn_started_at"]))
     if time_left <= 0:
-        # timeout fold
         state = load_room(room_code)
         state = force_timeout_fold(state)
         save_room(room_code, state)
@@ -798,7 +815,6 @@ if state["phase"] not in ["WAITING", "GAME_OVER"]:
 else:
     time_left = TURN_TIMEOUT
 
-# 게임오버 자동 다음판
 if state["phase"] == "GAME_OVER":
     rem = int(AUTO_NEXT_HAND_DELAY - (now - state["game_over_at"]))
     if rem <= 0:
@@ -842,7 +858,6 @@ st.markdown(hud_html, unsafe_allow_html=True)
 # =========================
 col_table, col_controls = st.columns([1.65, 1])
 
-# winner highlight
 winner_set = set(state.get("winners") or [])
 
 with col_table:
@@ -865,7 +880,6 @@ with col_table:
         if i == curr_idx and state["phase"] not in ["WAITING", "GAME_OVER"]:
             timer_html = f"<div class='turn-timer'>{int(time_left)}s</div>"
 
-        # 카드 표시: 내 카드 / 게임오버면 살아있던 사람 모두 오픈
         cards = "<div style='font-size:16px;'>🂠 🂠</div>"
         if p["status"] == "folded":
             cards = "<div class='fold-text'>FOLD</div>"
@@ -891,13 +905,15 @@ with col_table:
             "</div>"
         )
 
-    # center message + showdown
     showdown_html = ""
     if state["phase"] == "GAME_OVER" and state.get("showdown"):
         lines = []
         for line in state["showdown"]:
             hole = "".join([make_card(c) for c in line["hole"]]) if line.get("hole") else ""
-            lines.append(f"<div class='showdown-line'><b>{line['name']}</b> {hole} <span style='color:#ffeb3b;font-weight:900;'>→ {line['desc']}</span></div>")
+            lines.append(
+                f"<div class='showdown-line'><b>{line['name']}</b> {hole} "
+                f"<span style='color:#ffeb3b;font-weight:900;'>→ {line['desc']}</span></div>"
+            )
         confetti = "🎉" * 10
         showdown_html = f"""
         <div class="showdown-box">
@@ -920,7 +936,6 @@ with col_table:
 with col_controls:
     me = state["players"][my_seat]
 
-    # 서버 초기화 (방만 리셋)
     if st.button("⚠️ 서버 초기화(이 방)", use_container_width=True):
         state = init_room_state(room_code)
         save_room(room_code, state)
@@ -932,26 +947,23 @@ with col_controls:
     else:
         st.caption("아직 핸드 없음")
 
-    # WAITING
     if state["phase"] == "WAITING":
         st.info("✋ 다른 플레이어 입장을 기다리는 중입니다. (최소 2명)")
     else:
-        # 자동 리바인
         auto_rebuy_if_bust(me)
 
         curr_idx = state["turn_idx"]
         curr_p = state["players"][curr_idx]
 
-        # 내 차례 + alive
         if state["phase"] != "GAME_OVER" and curr_idx == my_seat and me["status"] == "alive":
             to_call = max(0, state["current_bet"] - me["bet"])
             st.success(f"내 차례! ({int(time_left)}초)")
 
-            # 체크/콜 라벨 (BB 옵션 체크도 액션 로그 남기게)
             check_label = "체크" if to_call == 0 else f"콜 ({to_call:,})"
             if st.button(check_label, use_container_width=True):
                 state = load_room(room_code)
                 me = state["players"][my_seat]
+                to_call = max(0, state["current_bet"] - me["bet"])
                 pay = min(to_call, me["stack"])
                 me["stack"] -= pay
                 me["bet"] += pay
@@ -988,7 +1000,6 @@ with col_controls:
                 me["action"] = f"올인({pay:,})"
                 if me["bet"] > state["current_bet"]:
                     state["current_bet"] = me["bet"]
-                    # 다른 alive는 다시 액션 필요
                     for p in state["players"]:
                         if p is not me and p["status"] == "alive" and p["stack"] > 0:
                             p["has_acted"] = False
@@ -1000,18 +1011,15 @@ with col_controls:
 
             st.markdown("---")
 
-            # 레이즈 기본값: 최소 2배 자동
-            # current_bet=현재까지의 베팅액(라운드 최대)
             min_raise = max(bb_amt, state["current_bet"] * 2)
             max_total = me["stack"] + me["bet"]
-
-            # value가 max를 넘으면 StreamlitValueAboveMaxError 터지니까 방어
             default_val = min(min_raise, max_total)
 
             step_val = 1000 if sb_amt >= 1000 else 100
+
             raise_to = st.number_input(
                 "레이즈(총액 기준)",
-                min_value=int(min( default_val, max_total )),
+                min_value=int(default_val if default_val <= max_total else max_total),
                 max_value=int(max_total),
                 value=int(default_val),
                 step=int(step_val),
@@ -1029,7 +1037,6 @@ with col_controls:
                 state["current_bet"] = max(state["current_bet"], me["bet"])
                 me["has_acted"] = True
                 me["action"] = f"레이즈({me['bet']:,})"
-                # 다른 alive는 다시 액션 필요
                 for p in state["players"]:
                     if p is not me and p["status"] == "alive" and p["stack"] > 0:
                         p["has_acted"] = False
@@ -1040,19 +1047,21 @@ with col_controls:
                 st.rerun()
 
         else:
-            # 내 차례 아니면 상태 표시
             if state["phase"] == "GAME_OVER":
                 st.info("게임 종료! 곧 다음 판 시작…")
             else:
                 st.info(f"👤 {curr_p['name']} 대기 중… ({int(time_left)}s)")
 
 # =========================
-# 13. Auto refresh (깜빡임 줄이기: WAITING은 느리게)
+# 13. Auto refresh (버튼 씹힘 방지 버전)
 # =========================
-# Streamlit 특성상 완전 무깜빡임은 어려운데,
-# WAITING은 3초, 진행중은 1초로 줄여서 눈부심 완화.
-if state["phase"] == "WAITING":
-    time.sleep(3)
-else:
-    time.sleep(1)
-st.rerun()
+# - 기존의 time.sleep + st.rerun 무한루프 제거(클릭이 안 먹는 원인)
+# - 가능하면 st_autorefresh 사용 (있으면 더 안정적)
+if auto_refresh:
+    interval_ms = 3000 if state["phase"] == "WAITING" else 1000
+    try:
+        from streamlit_autorefresh import st_autorefresh  # pip: streamlit-autorefresh
+        st_autorefresh(interval=interval_ms, key="autorefresh")
+    except Exception:
+        # 패키지 없으면 자동 갱신 없이 진행(클릭 안정성 우선)
+        st.caption("자동 새로고침 모듈이 없어 기본 자동갱신은 꺼진 상태로 동작합니다. (버튼 클릭은 정상)")
