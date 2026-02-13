@@ -1076,7 +1076,7 @@ with col_controls:
 # 13. Auto refresh (버튼/입력 먹통 방지 + 실시간 폴링)
 # =========================
 st.sidebar.markdown("---")
-auto_refresh = st.sidebar.toggle("자동 새로고침(권장)", value=True)
+auto_refresh = st.sidebar.toggle("자동 새로고침(권장)", value=True, key="auto_refresh_toggle")
 
 if auto_refresh:
     # 진행중은 빠르게, WAITING은 조금 느리게 (서버부하/눈부심 줄이기)
@@ -1088,5 +1088,6 @@ if auto_refresh:
     except Exception:
         # streamlit-autorefresh 설치/반영 전이면 일단 수동 안내
         st.sidebar.warning("자동 새로고침 모듈이 아직 반영 안 됐어. requirements.txt 저장/배포 확인!")
+
 
 
