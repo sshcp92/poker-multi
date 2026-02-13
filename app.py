@@ -2,6 +2,7 @@ import streamlit as st
 import random
 import time
 import json
+from streamlit_autorefresh import st_autorefresh
 from typing import Dict, Any, List, Tuple, Optional
 
 # =========================
@@ -1073,17 +1074,19 @@ with col_controls:
                 st.info(f"👤 {curr_p['name']} 대기 중… ({int(time_left)}s)")
 
 # =========================
-# 13. Auto refresh (버튼 씹힘 방지 버전)
+# 13. Auto refresh (버튼/입력 먹통 방지 + 실시간 폴링)
 # =========================
-# - 기존의 time.sleep + st.rerun 무한루프 제거(클릭이 안 먹는 원인)
-# - 가능하면 st_autorefresh 사용 (있으면 더 안정적)
-if auto_refresh:
-    interval_ms = 3000 if state["phase"] == "WAITING" else 1000
-    try:
-        from streamlit_autorefresh import st_autorefresh  # pip: streamlit-autorefresh
-        st_autorefresh(interval=interval_ms, key="autorefresh")
-    except Exception:
-        # 패키지 없으면 자동 갱신 없이 진행(클릭 안정성 우선)
-        st.caption("자동 새로고침 모듈이 없어 기본 자동갱신은 꺼진 상태로 동작합니다. (버튼 클릭은 정상)")
+st.sidebar.markdown("---")
+auto_refresh = st.sidebar.toggle("자동 새로고침(권장)", value=True)
 
+if auto_refresh:
+    # 진행중은 빠르게, WAITING은 조금 느리게 (서버부하/눈부심 줄이기)
+    interval_ms = 1200 if state["phase"] == "WAITING" else 600
+
+    try:
+        from streamlit_autorefresh import st_autorefresh
+        st_autorefresh(interval=interval_ms, key="auto_refresh_tick")
+    except Exception:
+        # streamlit-autorefresh 설치/반영 전이면 일단 수동 안내
+        st.sidebar.warning("자동 새로고침 모듈이 아직 반영 안 됐어. requirements.txt 저장/배포 확인!")
 
