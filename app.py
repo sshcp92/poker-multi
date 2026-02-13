@@ -89,55 +89,42 @@ DISPLAY_MAP = {"T": "10", "J": "J", "Q": "Q", "K": "K", "A": "A"}
 # 3. CSS (가독성/색/빈막대 제거)
 # =========================
 st.markdown(
-    """
-    <style>
-/* ===== Sidebar 가독성 Fix ===== */
-section[data-testid="stSidebar"]{
-  background:#0f0f10 !important;
-  border-right:1px solid #222 !important;
-}
-
-/* 사이드바 글자 전부 흰색 */
-section[data-testid="stSidebar"] *{
-  color:#ffffff !important;
-}
-
-/* 입력창(방코드/닉네임) */
-section[data-testid="stSidebar"] input,
-section[data-testid="stSidebar"] textarea{
-  background:#151515 !important;
-  color:#ffffff !important;
-  border:1px solid #333 !important;
-}
-
-/* placeholder(회색 글씨) */
-section[data-testid="stSidebar"] input::placeholder,
-section[data-testid="stSidebar"] textarea::placeholder{
-  color:#bdbdbd !important;
-}
-
-/* 토글/캡션도 더 선명하게 */
-section[data-testid="stSidebar"] .stCaption,
-section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p{
-  color:#e0e0e0 !important;
-}
-</style>
-""", unsafe_allow_html=True)
+        """
 <style>
-/* base */
+/* ===== base ===== */
 .stApp { background:#0f0f10; color:#fff; }
 .stApp > header { visibility:hidden; }
 div[data-testid="stStatusWidget"]{visibility:hidden;}
 div[data-testid="stDecoration"] {display:none;} /* 상단 빈 막대 제거 */
 footer {visibility:hidden;}
 
-/* Streamlit 기본 위젯 글씨가 안 보이는 문제 방지 */
+/* ===== Sidebar 가독성 Fix ===== */
+section[data-testid="stSidebar"]{
+  background:#0f0f10 !important;
+  border-right:1px solid #222 !important;
+}
+section[data-testid="stSidebar"] *{
+  color:#ffffff !important;
+}
+section[data-testid="stSidebar"] input,
+section[data-testid="stSidebar"] textarea{
+  background:#151515 !important;
+  color:#ffffff !important;
+  border:1px solid #333 !important;
+}
+section[data-testid="stSidebar"] input::placeholder,
+section[data-testid="stSidebar"] textarea::placeholder{
+  color:#bdbdbd !important;
+}
+section[data-testid="stSidebar"] .stCaption,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p{
+  color:#e0e0e0 !important;
+}
+
+/* ===== Streamlit 위젯 글씨/버튼 가독성 ===== */
 .stButton > button { 
   color:#000 !important; 
   font-weight:900 !important; 
-}
-.stButton > button[kind="primary"]{
-  color:#000 !important;
 }
 .stTextInput input, .stNumberInput input{
   color:#fff !important;
@@ -149,7 +136,7 @@ label, .stMarkdown, .stCaption, .stText{
   color:#fff !important;
 }
 
-/* HUD */
+/* ===== HUD ===== */
 .hud-wrap{
   display:flex; align-items:center; justify-content:space-between;
   gap:12px; padding:10px 12px; border-radius:16px;
@@ -175,7 +162,7 @@ label, .stMarkdown, .stCaption, .stText{
   color:#ffeb3b; font-weight:900; font-size:18px;
 }
 
-/* Table board */
+/* ===== Table board ===== */
 .game-board-container{
   position:relative; width:100%;
   min-height:520px; height: 72vh;
@@ -1098,4 +1085,5 @@ if auto_refresh:
     except Exception:
         # 패키지 없으면 자동 갱신 없이 진행(클릭 안정성 우선)
         st.caption("자동 새로고침 모듈이 없어 기본 자동갱신은 꺼진 상태로 동작합니다. (버튼 클릭은 정상)")
+
 
