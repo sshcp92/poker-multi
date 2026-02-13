@@ -819,7 +819,7 @@ def render_live_countdown(seconds_left: int):
           setInterval(()=>{{ if(left>0) left--; draw(); }}, 1000);
         </script>
         """,
-        height=32,   // ✅ 컨테이너 높이를 넉넉히 줘서 안 잘리게
+        height=32,   # container height to avoid clipping
     )
 
 # ---------------- init DB ----------------
@@ -1167,3 +1167,4 @@ else:
 
 time.sleep(sleep_sec)
 st.rerun()
+
