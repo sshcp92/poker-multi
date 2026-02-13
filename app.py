@@ -1072,7 +1072,6 @@ with col_controls:
                 st.info("게임 종료! 곧 다음 판 시작…")
             else:
                 st.info(f"👤 {curr_p['name']} 대기 중… ({int(time_left)}s)")
-
 # =========================
 # 13. Auto refresh (버튼/입력 먹통 방지 + 실시간 폴링)
 # =========================
@@ -1089,4 +1088,5 @@ if auto_refresh:
     except Exception:
         # streamlit-autorefresh 설치/반영 전이면 일단 수동 안내
         st.sidebar.warning("자동 새로고침 모듈이 아직 반영 안 됐어. requirements.txt 저장/배포 확인!")
+
 
