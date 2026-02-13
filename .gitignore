@@ -1,5 +1,6 @@
-poker_state.db
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
+poker_state.json
+poker_final_v16.json
